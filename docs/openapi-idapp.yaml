@@ -1,0 +1,140 @@
+openapi: 3.0.3
+info:
+  title: 시험장 안심패스 플러스 · ID·DEMO 앱 연동 API (DEMO 전용)
+  version: "1"
+  description: |
+    DEMO 전용 연동 계약입니다. 공식 모바일신분증 연동이 아니며, 이 API의 어떤 응답도 실제 신원 인증(`verified`),
+    입실 승인, 운영 QR 발급을 의미하지 않습니다(`real_authentication: false`, `entry_authorized: false`).
+    앱에는 장기 키가 없습니다. 앱의 유일한 자격은 키오스크 화면에 표시되는 1회용 페어링 코드(60초)입니다.
+    서버 비밀정보(`EXAM_SAFE_IDAPP_SECRET`)는 서버 환경변수에만 있으며 앱/APK에 넣지 않습니다.
+servers:
+  - url: https://{host}
+    description: HTTPS 필수 (Render 심사용 또는 개발 서버의 Forwarded 주소). 로컬 개발만 http://127.0.0.1 허용
+    variables:
+      host: {default: example.onrender.com}
+paths:
+  /api/idapp/info:
+    get:
+      summary: 서버 환경과 연동 활성 여부 (인증 불필요)
+      description: 앱이 개발 서버와 심사용 서버를 혼동하지 않도록 환경 이름을 보여 줍니다.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Info"}
+  /api/idapp/token:
+    post:
+      summary: (앱) 페어링 코드를 DEMO ID 토큰으로 교환
+      description: |
+        코드는 1회용·60초·키오스크 세션에 연결되어 있습니다. 성공 시 토큰은 30초·1회용이며 개인정보를 담지 않습니다.
+        `qr_payload` 문자열을 그대로 QR 코드로 그려 키오스크에 보여 줍니다.
+        실패 요청은 클라이언트별/전체 속도 제한(429, `Retry-After`)을 받습니다. 쿠키나 Origin 헤더는 필요 없습니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pairing_code]
+              properties:
+                pairing_code: {type: string, example: ABCD2345, description: "8자, 대문자·숫자(0,O,1,I,L 제외)"}
+      responses:
+        "200":
+          description: 토큰 발급
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Token"}
+        "400": {description: 코드 형식 오류 또는 알 수 없는 코드}
+        "409": {description: 이미 사용된 코드 또는 연결된 가상 응시자 비활성화}
+        "410": {description: 코드 만료}
+        "429": {description: 시도 횟수 초과}
+        "503": {description: 서버에서 연동이 활성화되지 않음 (fail-closed)}
+  /api/kiosk/idapp/pair:
+    post:
+      summary: (키오스크) 페어링 코드 발급
+      description: |
+        키오스크 세션(응시자 조회 완료, QR 발급 전)에 연결된 코드를 만듭니다. 이전 미사용 코드/토큰은 무효화됩니다.
+        한 번 시작하면 해당 세션의 입실용 DEMO QR 발급(자동 시연·감독관 승인 모두)은 ID QR 확인(`idapp_demo_checked`) 후에만 가능합니다.
+        심사용 환경에서는 심사용 로그인 쿠키와 `X-CSRF-Token`이 필요합니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kiosk_session_id]
+              properties: {kiosk_session_id: {type: string}}
+      responses:
+        "200":
+          description: 코드 발급
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pairing"}
+        "409": {description: 응시자 조회 전 또는 QR 발급 후}
+        "410": {description: 키오스크 세션 만료}
+        "503": {description: 연동 비활성}
+  /api/kiosk/idapp/verify:
+    post:
+      summary: (키오스크) 스캔한 앱 QR 검증 — 신분증 QR 확인 단계
+      description: |
+        서버가 토큰의 만료·재사용·키오스크 세션 및 응시자 연결·응시자 활성 상태를 확인합니다.
+        브라우저가 보낸 점수/주장 필드(`face_match`, `score`, `verified` 등)는 400으로 거부합니다.
+        성공해도 `real_authentication=false`, `entry_authorized=false`이며 입실용 QR 발급은 별도 단계(기존 DEMO 절차 또는 감독관 승인)입니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kiosk_session_id, qr_payload]
+              properties:
+                kiosk_session_id: {type: string}
+                qr_payload: {type: string, example: "DEMO-ONLY:IDAPP:<43자 난수>"}
+      responses:
+        "200":
+          description: DEMO 확인 완료
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Checked"}
+        "400": {description: 형식 오류·금지 필드 / 알 수 없는 토큰}
+        "403": {description: 다른 키오스크 세션의 토큰}
+        "409": {description: 재사용 토큰, 페어링 미시작, 비활성 응시자}
+        "410": {description: 토큰 만료}
+components:
+  schemas:
+    Info:
+      type: object
+      properties:
+        service: {type: string}
+        api_version: {type: string}
+        environment: {type: string, enum: [judge-demo, development-demo]}
+        link_enabled: {type: boolean}
+        demo_only: {type: boolean, enum: [true]}
+        real_authentication: {type: boolean, enum: [false]}
+    Token:
+      type: object
+      properties:
+        qr_payload: {type: string, description: "QR로 그릴 불투명 토큰. 개인정보·장기 키 없음"}
+        expires_in: {type: integer, example: 30}
+        demo_only: {type: boolean, enum: [true]}
+        real_authentication: {type: boolean, enum: [false]}
+        entry_authorized: {type: boolean, enum: [false]}
+        notice: {type: string}
+    Pairing:
+      type: object
+      properties:
+        pairing_code: {type: string}
+        expires_in: {type: integer, example: 60}
+        demo_only: {type: boolean, enum: [true]}
+        real_authentication: {type: boolean, enum: [false]}
+    Checked:
+      type: object
+      properties:
+        state: {type: string, enum: [idapp_demo_checked]}
+        demo_only: {type: boolean, enum: [true]}
+        real_authentication: {type: boolean, enum: [false]}
+        entry_authorized: {type: boolean, enum: [false]}
+        next_step: {type: string}
+        valid_for: {type: integer, description: "ID QR 확인이 입실용 QR 발급에 유효한 초"}
+        message: {type: string}

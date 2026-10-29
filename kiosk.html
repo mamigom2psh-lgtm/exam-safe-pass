@@ -234,10 +234,22 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <select id="demoExam"></select></div>
 <div class="field"><label for="demoGrade">급수·등급</label>
 <select id="demoGrade"></select></div>
-<div class="row"><button type="submit" id="demoInfoSubmit">DEMO 정보 확인 후 시뮬레이션 QR 발급</button><button type="button" class="secondary" id="demoInfoBack">결과 화면으로 돌아가기</button></div>
+<div class="row"><button type="submit" id="demoInfoSubmit">DEMO 정보 확인 후 시뮬레이션 QR 발급</button><button type="button" class="secondary" id="demoInfoBack">결과 화면으로 돌아가기</button><button type="button" class="secondary" id="idappOpen">ID·DEMO 앱 연동 확인 (선택)</button></div>
 </form>
 <div class="status" id="demoInfoStatus" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
 <p class="small">DEMO 시뮬레이션 · 공식 신분 인증 아님 · 실제 입실 불가. 일반 감독관 승인 경로는 별도로 유지됩니다.</p>
+</section>
+<section class="screen" id="idappScreen" aria-labelledby="idappTitle">
+<p class="step-count">ID·DEMO 앱 연동 · DEMO</p>
+<h2 id="idappTitle" tabindex="-1">ID·DEMO 앱 연동 확인</h2>
+<p class="lead"><strong>공식 신분 인증이 아니며 입실 승인도 아닙니다.</strong> 휴대전화의 ID·DEMO 앱 「안심패스 연동 DEMO」 모드에 아래 페어링 코드를 입력하고, 앱이 보여 주는 QR을 카메라에 비추세요. 확인 후에도 QR 입실권은 기존 DEMO 절차 또는 감독관 승인으로만 발급됩니다.</p>
+<div class="person" id="idappCode" aria-live="polite" style="font-size:44px;letter-spacing:.2em;text-align:center">--------</div>
+<div class="status" id="idappTimer" aria-live="polite"></div>
+<video class="camera-preview" id="idappVideo" playsinline muted hidden></video>
+<div class="field"><label for="idappManual">QR 문자열 직접 입력 (카메라를 쓸 수 없을 때)</label>
+<input id="idappManual" autocomplete="off" spellcheck="false" maxlength="120" style="width:100%"></div>
+<div class="row"><button type="button" id="idappNewCode">새 페어링 코드 받기</button><button type="button" id="idappScan">카메라로 앱 QR 스캔</button><button type="button" id="idappManualSubmit" class="secondary">입력한 QR 확인</button><button type="button" id="idappBack" class="secondary">돌아가기</button></div>
+<div class="status" id="idappStatus" role="alert" aria-live="assertive" aria-atomic="true">연동 전입니다. 오류가 나면 감독관 확인을 요청하세요. 인증은 완료되지 않았습니다.</div>
 </section>
 <section class="screen" id="proctorWaitScreen" aria-labelledby="proctorTitle">
 <h2 id="proctorTitle" tabindex="-1">감독관 확인 대기</h2>
@@ -317,6 +329,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 </div>
 <footer>DEMO QR은 실제 입실에 사용할 수 없습니다.</footer>
 <script src="/vendor/human/human.bundle.js"></script>
+<script src="/vendor/qr-decoder.min.js"></script>
 <script src="/face_similarity.js"></script>
 <script>
 const EXAM_ID='exam-demo-2026', SESSION_KEY='exam-safe-kiosk-session', IDLE_RESET_MS=180000;
@@ -1381,6 +1394,77 @@ function fillDemoGrades(){
 }
 $('demoExam').onchange=fillDemoGrades;
 $('demoInfoBack').onclick=()=>showScreen('selfResultScreen');
+// ID·DEMO app link: DEMO-only check; it never marks anyone verified and never issues an entry QR.
+let idappTimerId=0, idappScanTimer=0, idappStream=null, idappBusy=false;
+function stopIdappScan(){
+	clearInterval(idappScanTimer);idappScanTimer=0;
+	if(idappStream)idappStream.getTracks().forEach(track=>track.stop());
+	idappStream=null;$('idappVideo').srcObject=null;$('idappVideo').hidden=true;
+}
+function leaveIdapp(){stopIdappScan();clearInterval(idappTimerId);showScreen('demoInfoScreen')}
+$('idappOpen').onclick=()=>{showScreen('idappScreen');$('idappCode').textContent='--------';setStatus('idappStatus','「새 페어링 코드 받기」를 누르세요.')};
+$('idappBack').onclick=leaveIdapp;
+$('idappNewCode').onclick=async()=>{
+	$('idappNewCode').disabled=true;
+	try{
+		const result=await api('/api/kiosk/idapp/pair',{kiosk_session_id:kioskSessionId});
+		$('idappCode').textContent=result.pairing_code;
+		const until=Date.now()+result.expires_in*1000;
+		clearInterval(idappTimerId);
+		const tick=()=>{
+			const left=Math.max(0,Math.ceil((until-Date.now())/1000));
+			$('idappTimer').textContent=left>0?`코드 유효 시간 ${left}초 · 1회용`:'코드가 만료되었습니다. 새 코드를 받으세요.';
+			if(!left){clearInterval(idappTimerId);$('idappCode').textContent='--------'}
+		};
+		tick();idappTimerId=setInterval(tick,500);
+		setStatus('idappStatus','앱에 코드를 입력한 뒤 앱 QR(30초 유효)을 스캔하세요.');
+	}catch(error){
+		setStatus('idappStatus',error.message+' 감독관 확인을 요청할 수도 있습니다.','bad');
+	}finally{$('idappNewCode').disabled=false}
+};
+async function submitIdappQr(text){
+	if(idappBusy)return;
+	idappBusy=true;
+	try{
+		const result=await api('/api/kiosk/idapp/verify',{kiosk_session_id:kioskSessionId,qr_payload:text});
+		if(result.state!=='idapp_demo_checked'||result.real_authentication!==false||result.entry_authorized!==false)throw new Error('연동 응답을 확인할 수 없습니다. 인증은 완료되지 않았습니다.');
+		stopIdappScan();clearInterval(idappTimerId);
+		$('idappCode').textContent='확인됨 (DEMO)';
+		setStatus('idappStatus',result.message+' 이어서 DEMO 정보 확인 또는 감독관 승인을 진행하세요.','good');
+	}catch(error){
+		setStatus('idappStatus',error.message,'bad');
+	}finally{idappBusy=false}
+}
+$('idappManualSubmit').onclick=()=>{
+	const text=$('idappManual').value.trim();
+	if(!text){setStatus('idappStatus','QR 문자열을 입력해 주세요. 인증은 완료되지 않았습니다.','bad');return}
+	submitIdappQr(text);
+};
+$('idappScan').onclick=async()=>{
+	if(!navigator.mediaDevices?.getUserMedia||!window.ExamSafeQrDecoder){
+		setStatus('idappStatus','이 브라우저에서는 카메라 스캔을 쓸 수 없습니다. QR 문자열을 직접 입력하거나 감독관 확인을 요청하세요.','bad');return;
+	}
+	stopIdappScan();
+	try{
+		idappStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+	}catch(error){
+		setStatus('idappStatus','카메라 권한이 거부되었거나 사용할 수 없습니다. QR 문자열을 직접 입력하거나 감독관 확인을 요청하세요.','bad');return;
+	}
+	const video=$('idappVideo');video.srcObject=idappStream;video.hidden=false;await video.play().catch(()=>{});
+	const canvas=document.createElement('canvas');
+	const stopAt=Date.now()+60000;
+	setStatus('idappStatus','앱 QR을 카메라에 비춰 주세요. (최대 60초)');
+	idappScanTimer=setInterval(()=>{
+		if(Date.now()>stopAt){stopIdappScan();setStatus('idappStatus','스캔 시간이 초과되었습니다. 다시 시도하거나 감독관 확인을 요청하세요. 인증은 완료되지 않았습니다.','bad');return}
+		if(!video.videoWidth)return;
+		canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+		canvas.getContext('2d').drawImage(video,0,0);
+		let text=null;
+		try{text=window.ExamSafeQrDecoder.decodeCanvas(canvas)}catch(error){text=null}
+		if(text)submitIdappQr(text);
+	},300);
+};
+
 $('demoInfoForm').onsubmit=async event=>{
 	event.preventDefault();
 	const out=$('demoInfoStatus');

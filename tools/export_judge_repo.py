@@ -23,10 +23,10 @@ sys.path.insert(0, str(ROOT))
 import auth_config  # noqa: E402
 
 FILES = [
-    "server.py", "auth_config.py", "judge_mode.py", "session_store.py", "demo_candidates.py", "demo_scenarios.py",
+    "server.py", "auth_config.py", "judge_mode.py", "idapp_link.py", "session_store.py", "demo_candidates.py", "demo_scenarios.py",
     "mobile_id_provider.py", "self_identity_provider.py", "verification_policy.py", "kiosk.html", "index.html",
     "judge_login.html", "face_similarity.js", "requirements.txt", "render.yaml", ".env.example", ".gitignore",
-    "docs/RENDER_DEPLOY.md", "docs/JUDGE_CHECKLIST.md", "docs/PRIVACY.md",
+    "docs/RENDER_DEPLOY.md", "docs/JUDGE_CHECKLIST.md", "docs/PRIVACY.md", "docs/IDAPP_INTEGRATION.md", "docs/openapi-idapp.yaml",
 ]
 README = """# 시험장 안심패스 플러스 (EXAM SAFE PASS+) — 심사위원 전용 DEMO
 

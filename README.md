@@ -236,3 +236,7 @@ node --test tests/test_face_similarity.js
 ## 수정 전 백업
 
 provider 구조 추가 전에 만들어 둔 `*_pre_provider_backup` 파일들과 이전 백업은 그대로 유지했습니다. 안심패스 플러스 변경 직전에는 `*_pre_plus_backup` 파일로, 공용 키오스크 추가 직전에는 `server_pre_kiosk_backup.py`, `index_pre_kiosk_backup.html`, `test_scenarios_pre_kiosk_backup.py`, `tests/test_regression_pre_kiosk_backup.py`, `README_pre_kiosk_backup.md`로 별도 백업했습니다. `index_old.html`과 `images/`는 수정하지 않았습니다.
+
+## ID·DEMO 앱 연동 (DEMO 전용)
+
+페어링 코드 → 앱 QR → 키오스크 검증 → 감독관 승인. 공식 인증이 아니며 앱(Android) 수정은 미구현입니다. 자세한 내용: [docs/IDAPP_INTEGRATION.md](docs/IDAPP_INTEGRATION.md), [OpenAPI](docs/openapi-idapp.yaml).

@@ -122,3 +122,7 @@ QR 디코드 간헐 실패: 원인은 서버 QR 생성이 아니라 zxing-js의 
 - 카메라 없는 기본 체험: 「카메라 없이 사전 설정 시뮬레이션 체험」 → 「자동 발급 시연(DEMO)」. QR은 DEMO 전용(30초, 1회, 실제 입실 불가). 얼굴 점수는 인증/QR 근거가 아님.
 - 배포 도구: `render.yaml`, `tools/export_judge_repo.py`(허용 목록 내보내기·감사·새 로컬 저장소 1커밋, push 없음), `tools/reset_judge_data.py`, `docs/RENDER_DEPLOY.md`, `docs/JUDGE_CHECKLIST.md`.
 - 미검증: 실제 Render 배포, 외부 브라우저·스마트폰 실기기, 카메라·프린터, Render 프록시 뒤 클라이언트 IP 속도 제한. 속도 제한은 메모리 기반이라 재시작 시 초기화.
+
+## ID·DEMO 앱 연동
+
+서버·키오스크·OpenAPI·자동 테스트: 완료. Android 앱 수정: 미구현(원본 소스 없음). 실기기/카메라/Render 검증: 미검증. 상세는 docs/IDAPP_INTEGRATION.md.

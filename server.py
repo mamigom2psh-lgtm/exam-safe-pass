@@ -39,6 +39,7 @@ import verification_policy
 import demo_candidates
 import auth_config
 import judge_mode
+import idapp_link
 import session_store
 
 
@@ -153,6 +154,7 @@ def initialize_db() -> None:
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     with connect_db() as connection:
         connection.execute("PRAGMA journal_mode=WAL")
+        idapp_link.init_schema(connection)
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS tokens (
@@ -590,6 +592,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     f"UPDATE {table} SET used_at = ? WHERE used_at IS NULL AND expires_at > ? {clause}",
                     (now, now, *active),
                 )
+            idapp_link.revoke_inactive(connection, active, now)
             if removed:
                 write_event(connection, "비활성 응시자 세션 무효화", "info", exam_id=EXAM_ID, actor="admin",
                             details=f"invalidated_sessions={removed}")
@@ -734,6 +737,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     write_event(connection, "허용되지 않은 Origin", "blocked", actor="unknown",
                                 details="state-changing request rejected by origin allow-list")
                 self._send_json(403, {"error": "허용되지 않은 출처(Origin)의 요청입니다."})
+                return
+            if self._idapp_public_route():
                 return
             if self.server.judge is not None and not self._judge_gate():
                 return
@@ -1094,6 +1099,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/kiosk/candidate":
             self._lookup_kiosk_candidate()
             return
+        if path == "/api/kiosk/idapp/pair":
+            self._kiosk_idapp_pair()
+            return
+        if path == "/api/kiosk/idapp/verify":
+            self._kiosk_idapp_verify()
+            return
         if path == "/api/kiosk/self-auth":
             if self._require_role("admin"):
                 self._authenticate_kiosk_self_demo()
@@ -1185,6 +1196,186 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "demo_delivery": None,
             }
         self._send_json(201, {"kiosk_session_id": session_id, "expires_in": KIOSK_SESSION_TTL_SECONDS})
+
+    # ---- ID·DEMO app link (DEMO only; never verified / entry / operational) ----
+    def _idapp_public_route(self) -> bool:
+        """Routes for the phone app: no cookie, authenticated only by a one-time pairing code."""
+        path = judge_mode.safe_path(self.path)
+        if self.command == "GET" and path == "/api/idapp/info":
+            self._send_json(200, {
+                "service": "exam-safe-pass-idapp-link",
+                "api_version": "1",
+                "environment": "judge-demo" if self.server.judge is not None else "development-demo",
+                "link_enabled": self.server.idapp_secret is not None,
+                "demo_only": True,
+                "real_authentication": False,
+            }, extra_headers={"Cache-Control": "no-store"})
+            return True
+        if self.command == "POST" and path == "/api/idapp/token":
+            self._idapp_token()
+            return True
+        if path.startswith("/api/idapp/"):
+            self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
+            return True
+        return False
+
+    def _idapp_disabled(self) -> bool:
+        if self.server.idapp_secret is None:
+            self._send_json(503, {"error": "ID·DEMO 앱 연동이 서버에서 활성화되지 않았습니다.", "demo_only": True,
+                                  "real_authentication": False})
+            return True
+        return False
+
+    @staticmethod
+    def _idapp_candidate_active(exam_id: str, candidate_id: str) -> bool:
+        return (exam_id, candidate_id) in ROSTER
+
+    def _idapp_blocked(self, session: dict) -> bool:
+        """Once a kiosk session started the app link, entry-QR issuance needs a completed ID-QR check."""
+        if session.get("idapp_required") and (session.get("idapp_checked_until") or 0) <= time.time():
+            self._send_json(409, {
+                "error": "ID·DEMO 앱 QR 확인이 필요합니다. 앱 QR을 확인하거나 감독관 확인을 요청하세요.",
+                "idapp_required": True, "demo_only": True, "real_authentication": False,
+            })
+            return True
+        return False
+
+    def _idapp_token(self) -> None:
+        if self._idapp_disabled():
+            return
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        judge = self.server.judge
+        client = judge_mode.client_key(self.headers, self.client_address[0], bool(judge and judge.trust_proxy))
+        for limiter, key in ((self.server.login_limiter, f"idapp|{client}"), (self.server.global_limiter, "idapp|*")):
+            wait = limiter.retry_after(key)
+            if wait:
+                self._send_json(429, {"error": f"요청이 너무 많습니다. {wait}초 후 다시 시도해 주세요."},
+                                extra_headers={"Retry-After": str(wait)})
+                return
+        with connect_db() as connection:
+            status, token = idapp_link.redeem_pairing(
+                connection, self.server.idapp_secret, payload.get("pairing_code"), time.time(),
+                self._idapp_candidate_active,
+            )
+            if status != "ok":
+                self.server.login_limiter.record_failure(f"idapp|{client}")
+                self.server.global_limiter.record_failure("idapp|*")
+                write_event(connection, "ID·DEMO 앱 토큰 발급 거부", "blocked", actor="idapp",
+                            details=f"authentication_path=idapp_demo; reason={status}")
+                messages = {
+                    "expired": ("410", "페어링 코드가 만료되었습니다. 키오스크에서 새 코드를 받으세요."),
+                    "used": ("409", "이미 사용된 페어링 코드입니다. 키오스크에서 새 코드를 받으세요."),
+                    "candidate_inactive": ("409", "연결된 가상 응시자가 비활성화되었습니다."),
+                }
+                code, message = messages.get(status, ("400", "페어링 코드가 올바르지 않습니다."))
+                self._send_json(int(code), {"error": message, "demo_only": True, "real_authentication": False})
+                return
+            write_event(connection, "ID·DEMO 앱 토큰 발급", "accepted", actor="idapp",
+                        details=f"authentication_path=idapp_demo; one-time DEMO ID token {idapp_link.TOKEN_TTL_SECONDS}s; not real authentication")
+        self._send_json(200, {
+            "qr_payload": token,
+            "expires_in": idapp_link.TOKEN_TTL_SECONDS,
+            "demo_only": True,
+            "real_authentication": False,
+            "entry_authorized": False,
+            "notice": "DEMO 전용 · 공식 신분 인증 아님 · 실제 입실 불가",
+        }, extra_headers={"Cache-Control": "no-store"})
+
+    def _kiosk_idapp_pair(self) -> None:
+        if self._idapp_disabled():
+            return
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        session_id = payload.get("kiosk_session_id")
+        session = self._kiosk_session(session_id)
+        if not session:
+            self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
+            return
+        with self.server.kiosk_lock:
+            candidate_id, exam_id = session.get("candidate_id"), session.get("exam_id")
+            if (
+                not candidate_id
+                or session.get("demo_token_hash")
+                or session["state"] not in {"awaiting_self_auth", "awaiting_proctor", "demo_authenticated"}
+            ):
+                self._send_json(409, {"error": "응시자 조회 후, QR 발급 전에만 앱 연동을 시작할 수 있습니다."})
+                return
+            if not self._idapp_candidate_active(exam_id, candidate_id):
+                raise CandidateGone(candidate_id)
+            with connect_db() as connection:
+                code = idapp_link.create_pairing(connection, self.server.idapp_secret, session_id, exam_id,
+                                                 candidate_id, time.time())
+                write_event(connection, "ID·DEMO 앱 페어링 코드 발급", "info", exam_id=exam_id,
+                            candidate_id=candidate_id, actor="kiosk",
+                            details=f"authentication_path=idapp_demo; one-time pairing code {idapp_link.PAIRING_TTL_SECONDS}s")
+            session["idapp_required"] = True
+            session["idapp_checked_until"] = None
+        self._send_json(200, {
+            "pairing_code": code,
+            "expires_in": idapp_link.PAIRING_TTL_SECONDS,
+            "demo_only": True,
+            "real_authentication": False,
+        }, extra_headers={"Cache-Control": "no-store"})
+
+    def _kiosk_idapp_verify(self) -> None:
+        if self._idapp_disabled():
+            return
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        if KIOSK_BROWSER_ASSERTION_FIELDS.intersection(payload):
+            self._send_json(400, {"error": "ID·DEMO 앱 QR 확인은 브라우저가 보낸 점수나 인증 주장을 받지 않습니다.",
+                                  "demo_only": True, "real_authentication": False})
+            return
+        session_id = payload.get("kiosk_session_id")
+        session = self._kiosk_session(session_id)
+        if not session:
+            self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
+            return
+        with self.server.kiosk_lock:
+            candidate_id, exam_id = session.get("candidate_id"), session.get("exam_id")
+            if not candidate_id or not session.get("idapp_required"):
+                self._send_json(409, {"error": "먼저 앱 연동 페어링 코드를 발급받아야 합니다."})
+                return
+            with connect_db() as connection:
+                status = idapp_link.verify_token(
+                    connection, self.server.idapp_secret, session_id, exam_id, candidate_id,
+                    payload.get("qr_payload"), time.time(), self._idapp_candidate_active,
+                )
+                write_event(connection, "ID·DEMO 앱 QR 확인", "accepted" if status == "ok" else "blocked",
+                            exam_id=exam_id, candidate_id=candidate_id, actor="kiosk",
+                            details=f"authentication_path=idapp_demo; result={status}; DEMO only; not real authentication; no entry authority")
+            if status == "candidate_inactive":
+                raise CandidateGone(candidate_id)
+            if status != "ok":
+                errors = {
+                    "expired": (410, "앱 QR이 만료되었습니다. 앱에서 새 QR을 표시해 다시 스캔하세요."),
+                    "used": (409, "이미 사용된 앱 QR입니다. 앱에서 새 QR을 표시하세요."),
+                    "mismatch": (403, "이 키오스크 세션에 연결된 QR이 아닙니다."),
+                }
+                code, message = errors.get(status, (400, "앱 QR을 확인할 수 없습니다."))
+                self._send_json(code, {"error": message, "state": "idapp_not_checked", "demo_only": True,
+                                       "real_authentication": False})
+                return
+            session["idapp_checked_until"] = time.time() + idapp_link.CHECK_VALID_SECONDS
+        self._send_json(200, {
+            "state": "idapp_demo_checked",
+            "demo_only": True,
+            "real_authentication": False,
+            "entry_authorized": False,
+            "next_step": "supervisor_approval_or_demo_issue",
+            "valid_for": idapp_link.CHECK_VALID_SECONDS,
+            "message": "ID·DEMO 앱 QR 확인(DEMO) 완료. 공식 신분 인증이나 입실 승인이 아닙니다.",
+        })
 
     def _lookup_kiosk_candidate(self) -> None:
         try:
@@ -1501,6 +1692,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 or session.get("demo_auth_expires_at", 0) <= time.time()
             ):
                 self._send_json(409, {"error": "유효한 DEMO 모의 인증이 없어 QR을 발급할 수 없습니다."})
+                return
+            if self._idapp_blocked(session):
                 return
             now = time.time()
             candidate_id = session["candidate_id"]
@@ -2165,6 +2358,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             if session.get("mode") != "self_demo" or session["state"] != "awaiting_self_auth":
                 self._send_json(409, {"error": "자동 발급 시연을 시작할 수 있는 상태가 아닙니다. 이미 발급되었거나 감독관 확인 중입니다."})
                 return
+            if self._idapp_blocked(session):
+                return
             now = time.time()
             candidate_id = session["candidate_id"]
             exam_id = session["exam_id"]
@@ -2577,6 +2772,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     )
                     self._send_json(409, {"error": "이미 입실 처리된 응시자입니다."})
                     return
+                if self._idapp_blocked(session):
+                    return
                 token_hash, demo_token, qr_png, expires_at = self._create_kiosk_demo_token(
                     connection, candidate_id, now
                 )
@@ -2738,6 +2935,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     )
                     response = {"state": "supervisor_pending", "message": "신원확인 보류 · 책임자 확인 대기 상태입니다. QR은 발급되지 않았습니다."}
                     status = 200
+                elif self._idapp_blocked(session):
+                    return
                 else:
                     approved_at = time.time()
                     token_hash, demo_token, qr_png, expires_at = self._create_kiosk_demo_token(
@@ -4186,6 +4385,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             connection.execute("DELETE FROM demo_tokens WHERE exam_id = ?", (EXAM_ID,))
             connection.execute("DELETE FROM mobile_id_auth WHERE exam_id = ?", (EXAM_ID,))
             connection.execute("DELETE FROM demo_mobile_id_auth WHERE exam_id = ?", (EXAM_ID,))
+            idapp_link.clear(connection)
             write_event(
                 connection,
                 "시연 상태 초기화",
@@ -4230,6 +4430,7 @@ def create_server(host: str, port: int, environ: dict[str, str] | None = None) -
         auth.allowed_origins = auth_config.trusted_origins(environ, server.server_address[1])
     server.auth = auth
     server.judge = judge
+    server.idapp_secret = idapp_link.secret_from_env(environ)
     server.global_limiter = auth_config.LoginRateLimiter(
         max_failures=judge.global_max_failures if judge else 1000,
         window_seconds=judge.window_seconds if judge else 300,
