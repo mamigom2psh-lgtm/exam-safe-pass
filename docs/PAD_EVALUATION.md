@@ -25,5 +25,15 @@ Human 3.3.6 `antispoof` (브라우저 내 추론). 연구용 참고값이며 **�
 - `evaluatePadEvidence`는 어떤 점수에서도 `reference_only` / `verified:false`를 반환합니다.
 - `browserVerificationState`는 `verified`/`rejected`를 만들 수 없고 `pending` 또는 `inconclusive`만 반환합니다.
 
-## 추가 PAD 후보 검토 상태 (이번 점검)
-외부 조사와 모델 파일·라이선스·브라우저 호환성·독립 검증 자료 확인을 수행하지 않았으므로 **어떤 추가 PAD 모델도 도입하지 않았습니다.** 후보(예: Silent-Face/MiniFASNet 계열, 상용 PAD SDK)는 위 4개 항목이 확인되기 전까지 "미검증 후보"입니다. 현재 Human antispoof 점수는 참고용이며 인증 성공에 쓰이지 않습니다.
+## 추가 PAD 후보 검토 (조사 결과)
+| 후보 | 확인된 사실 | 미확인/문제 | 결정 |
+|---|---|---|---|
+| Silent-Face-Anti-Spoofing(MiniFASNet) | GitHub 저장소 라이선스 Apache-2.0(API 확인), PyTorch 학습 코드 제공 | 공식 저장소에 ONNX/브라우저 런타임 없음(커뮤니티 변환본만), 학습 데이터 출처·재사용 권리 문서 없음, 인쇄/재생 공격 독립 검증 자료 미확인, onnxruntime-web 번들 필요 | **통합 안 함** |
+| 상용 PAD SDK | 미조사(계약·라이선스 필요) | 모델 파일·성능 인증(예: ISO 30107-3 시험기관 보고서) 확인 불가 | **통합 안 함** |
+
+검증 기준(출처·라이선스·모델 파일 해시·브라우저 실행·독립 검증 자료)을 충족한 모델이 없으므로 추가 모델은 통합하지 않았습니다. 웹 검색 요약의 TPR/FPR 수치는 출처 미검증이라 채택하지 않았습니다.
+
+## 재현 가능한 평가 항목
+`face_similarity.js`의 `evaluatePadSamples(samples, threshold)`는 공격 유형별(phone_screen, printed_photo, replay_video) APCER와 bona fide BPCER를 계산하고, 클래스당 30개 미만이면 `reportable:false`, 권고 임계값은 항상 null입니다. `tests/fixtures/recorded_field_cases.json`의 기록 사례(점수만)로 자동 테스트합니다.
+- 기록 사례: 휴대전화 화면 공격 0.69·0.49·0.88, 실제 얼굴 0.74. 임계값 0.5에서는 공격 2건이 live로 통과하고, 0.75로 올리면 실제 얼굴(0.74)이 거부되는데도 공격 0.88은 여전히 통과합니다 → **임계값 조정으로 해결되지 않음**(테스트로 고정).
+- 미시험 유형: 인쇄 사진, 재생 영상(실제 샘플 없음). 실제 얼굴·휴대전화·인쇄·영상을 구분한 수집은 수동 평가 항목입니다.

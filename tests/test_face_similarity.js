@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { evaluate, explainHumanDistance, summarizeScoreDistribution, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage } = require('../face_similarity.js');
+const sim = require('../face_similarity.js');
 
 const face = (embedding) => ({ embedding: Array.from({ length: 128 }, (_, i) => embedding + i / 1000) });
 const compareScores = (score) => () => score;
@@ -239,4 +240,39 @@ test('identical embeddings give distance zero, different faces give larger dista
 	const other = vector(7);
 	assert.equal(distance(a, a), 0);
 	assert.ok(distance(a, nearSame) < distance(a, other));
+});
+
+test('error-rate helper never recommends a cutoff and flags small samples', () => {
+	const result = sim.computeErrorRates({ same: [500, 900], other: [1700, 2000] }, [1000, 1500]);
+	assert.equal(result.reportable, false);
+	assert.equal(result.recommendedThreshold, null);
+	assert.deepEqual(result.rows.map((r) => [r.frr, r.far]), [[0, 0], [0, 0]]);
+	const wide = sim.computeErrorRates({ same: [500, 1200], other: [900, 2000] }, [1000]);
+	assert.deepEqual([wide.rows[0].frr, wide.rows[0].far], [0.5, 0.5]);
+	assert.equal(sim.computeErrorRates({}, [1]).rows[0].far, null);
+});
+
+test('alignment effect summary is descriptive only', () => {
+	const result = sim.summarizeAlignmentEffect([{ baseline: 10, aligned: 8 }, { baseline: 5, aligned: 6 }, { baseline: NaN, aligned: 1 }]);
+	assert.equal(result.count, 2);
+	assert.equal(result.improved, 1);
+	assert.equal(result.worsened, 1);
+	assert.equal(result.conclusion, 'descriptive_only');
+	assert.equal(sim.summarizeAlignmentEffect([]).count, 0);
+});
+
+test('recorded PAD cases: no threshold separates them and nothing is reportable', () => {
+	const samples = recorded.pad_misclassifications_human_antispoof_3_3_6
+		.concat(recorded.pad_bona_fide_human_antispoof_3_3_6);
+	for (const threshold of [0.5, 0.7, 0.8, 0.9]) {
+		const r = sim.evaluatePadSamples(samples, threshold);
+		assert.equal(r.reportable, false);
+		assert.equal(r.recommendedThreshold, null);
+		assert.deepEqual(r.untestedAttackTypes, ['printed_photo', 'replay_video']);
+	}
+	// 0.5: attacks 0.69 and 0.88 accepted. 0.75: bona fide (0.74) rejected while 0.88 attack still accepted.
+	assert.equal(sim.evaluatePadSamples(samples, 0.5).classes.phone_screen.acceptedAsLive, 2);
+	const strict = sim.evaluatePadSamples(samples, 0.75);
+	assert.equal(strict.classes.phone_screen.acceptedAsLive, 1);
+	assert.equal(strict.classes.bona_fide.acceptedAsLive, 0);
 });

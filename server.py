@@ -68,6 +68,8 @@ VENDOR_FILES = {
     "human/models/blazeface.bin",
     "human/models/faceres.json",
     "human/models/faceres.bin",
+    "human/models/facemesh.json",
+    "human/models/facemesh.bin",
     "human/models/antispoof.json",
     "human/models/antispoof.bin",
 }

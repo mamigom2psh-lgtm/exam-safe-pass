@@ -23,3 +23,12 @@ The application uses a 0.50 score threshold only as a demo cutoff. This is not a
 calibrated or validated security threshold. Inference runs in the kiosk browser;
 frames and model scores are not uploaded or persisted. A model load or output
 failure is a failed check, never a successful check.
+
+Human Facemesh (alignment) model
+Runtime/source: files copied unmodified from the official npm package @vladmandic/human 3.3.6
+(node_modules/@vladmandic/human/models/). License: MIT (LICENSE in this directory).
+SHA-256:
+  facemesh.bin  3826da640b0a3021161605369ee6af293f75d518040355b960ec71a3390c1c0b
+  facemesh.json b60ca26f404724f43bd2b1575761d8265180e1f053cc0731caa68462927309e7
+The same package copy has byte-identical blazeface.bin and faceres.bin to the vendored ones.
+Used only for an optional, informational alignment measurement; not an identity decision.

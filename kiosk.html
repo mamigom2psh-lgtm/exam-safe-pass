@@ -156,6 +156,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <dt>촬영 프레임 얼굴 box</dt><dd id="diagLiveBox">확인 전</dd>
 <dt>촬영 프레임 FaceRes</dt><dd id="diagLiveEmbedding">확인 전</dd>
 <dt>임베딩 전처리</dt><dd id="diagAlign">mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)</dd>
+<dt>정렬 전/후 거리 (Facemesh, 참고)</dt><dd id="diagAlignment">확인 전</dd>
 <dt>등록 사진 재검출 자기 비교</dt><dd id="diagSelf">확인 전</dd>
 <dt>프레임별 거리 분포 (등록 vs 8프레임)</dt><dd id="diagDist">확인 전</dd>
 <dt>세션 수집 분포 (메모리 전용)</dt><dd id="diagSession">기록 없음</dd>
@@ -279,7 +280,8 @@ const antiSpoofDiagnostics={
 	liveBox:'확인 전',
 	liveEmbedding:'확인 전',
 	distance:'확인 전',
-	align:'mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)',
+	align:'기본 경로: 정렬 꺼짐 · 참고 측정: Facemesh+회전 정렬(동일 적용)',
+		alignment:'확인 전',
 	selfCompare:'확인 전',
 	distribution:'확인 전',
 	formula:'확인 전',
@@ -317,6 +319,7 @@ function updateAntiSpoofDiagnostics(changes){
 		liveEmbedding:'diagLiveEmbedding',
 		distance:'diagDistance',
 		align:'diagAlign',
+		alignment:'diagAlignment',
 		selfCompare:'diagSelf',
 		distribution:'diagDist',
 		formula:'diagFormula',
@@ -477,6 +480,42 @@ function clearFaceResults(results){
 		if(faceModel.process?.canvas){faceModel.process.canvas.width=0;faceModel.process.canvas.height=0}
 		faceModel.process={tensor:null,canvas:null};
 	}
+}
+// Facemesh alignment runs on a SEPARATE Human instance so that a missing or broken facemesh
+// model can never break the baseline analysis. The same instance/config aligns the registered
+// photo and every camera frame. Baseline stays the only path used for any verdict.
+let alignModel=null, alignModelPromise=null, alignLoadError='';
+async function ensureAlignModel(){
+	if(alignModel)return alignModel;
+	if(alignLoadError)throw new Error(alignLoadError);
+	if(!alignModelPromise){
+		const candidate=new HumanBundle.Human({
+			modelBasePath:ANTISPOOF_MODEL_BASE,warmup:'none',cacheModels:true,
+			face:{
+				enabled:true,
+				detector:{modelPath:'blazeface.json',rotation:true,maxDetected:5,skipFrames:0,skipTime:0,minConfidence:0.2},
+				mesh:{enabled:true,modelPath:'facemesh.json'},attention:{enabled:false},iris:{enabled:false},
+				description:{enabled:true,modelPath:'faceres.json',skipFrames:0,skipTime:0,minConfidence:0.1},
+				emotion:{enabled:false},antispoof:{enabled:false},liveness:{enabled:false},
+			},
+			body:{enabled:false},hand:{enabled:false},gesture:{enabled:false},object:{enabled:false},segmentation:{enabled:false},
+		});
+		alignModelPromise=candidate.load().then(()=>{
+			const stats=candidate.models.stats().modelStats;
+			const meshLoaded=stats.find(info=>info.name==='facemesh')?.loaded;
+			if(!meshLoaded)throw new Error('facemesh 모델이 로드되지 않았습니다.');
+			alignModel=candidate;
+			return candidate;
+		}).catch(error=>{
+			alignLoadError=error instanceof Error?error.message:'정렬 모델 로딩 오류';
+			throw new Error(alignLoadError);
+		});
+	}
+	return alignModelPromise;
+}
+async function detectAligned(input,deadline){
+	const model=await awaitAnalysisStep(ensureAlignModel(),deadline-Date.now());
+	return {model,result:await awaitAnalysisStep(model.detect(input),deadline-Date.now())};
 }
 async function ensureFaceModel(){
 	if(currentMode!=='self_demo')throw new Error('안티스푸핑 진단은 셀프 DEMO에서만 사용할 수 있습니다.');
@@ -832,7 +871,8 @@ $('cameraContinue').onclick=async()=>{
 		liveBox:'확인 전',
 		liveEmbedding:'확인 전',
 		distance:'확인 전',
-		align:'mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)',
+		align:'기본 경로: 정렬 꺼짐 · 참고 측정: Facemesh+회전 정렬(동일 적용)',
+		alignment:'확인 전',
 		selfCompare:'확인 전',
 		distribution:'확인 전',
 		formula:'확인 전',
@@ -876,6 +916,17 @@ $('cameraContinue').onclick=async()=>{
 			referenceEmbedding:referenceDiagnostics.embedding,
 			formula:'distance=round(100×25×Σ(diff²))/100; similarity=clamp(round(((1−√distance/100−0.2)/0.6),2),0,1); 표시=similarity×100',
 		});
+		let alignedReferenceFace, alignHuman;
+		let alignmentFailure='';
+		if(referenceFace&&deadline-Date.now()>6000){
+			try{
+				const aligned=await detectAligned(reference,deadline);
+				alignHuman=aligned.model;
+				results.push(aligned.result);
+				if(aligned.result?.face?.length===1)alignedReferenceFace=aligned.result.face[0];
+			}catch(error){alignmentFailure=error instanceof Error?error.message:'오류'}
+		}
+		const alignmentPairs=[];
 		updateAntiSpoofDiagnostics({frame:'model.detect(frame) 호출 중'});
 		const frameRecords=[];
 		const frameDistances=[];
@@ -892,6 +943,16 @@ $('cameraContinue').onclick=async()=>{
 			livenessResults.push(livenessResult);
 			if(referenceFace&&detectedFaces?.length===1&&detectedFaces[0]?.embedding?.length===referenceFace.embedding?.length){
 				frameDistances.push(model.match.distance(referenceFace.embedding,detectedFaces[0].embedding));
+			}
+			if(alignedReferenceFace&&!alignmentFailure&&detectedFaces?.length===1&&deadline-Date.now()>3000){
+				try{
+					const alignedFrame=(await detectAligned(frame,deadline)).result;
+					results.push(alignedFrame);
+					const alignedFace=alignedFrame?.face?.length===1?alignedFrame.face[0]:undefined;
+					if(alignedFace?.embedding?.length===alignedReferenceFace.embedding.length&&frameDistances.length){
+						alignmentPairs.push({baseline:frameDistances[frameDistances.length-1],aligned:alignHuman.match.distance(alignedReferenceFace.embedding,alignedFace.embedding)});
+					}
+				}catch(error){alignmentFailure=error instanceof Error?error.message:'오류'}
 			}
 			const actualScore=detectedFaces?.length===1?detectedFaces[0]?.real:undefined;
 			frameRecords.push({
@@ -930,6 +991,10 @@ $('cameraContinue').onclick=async()=>{
 		const livenessSummary=ExamFaceSimilarity.summarizeLivenessFrames(livenessResults);
 		const explained=ExamFaceSimilarity.explainHumanDistance(comparison.distance);
 		const dist=ExamFaceSimilarity.summarizeScoreDistribution({frames:frameDistances}).frames;
+		const alignmentSummary=ExamFaceSimilarity.summarizeAlignmentEffect(alignmentPairs);
+		updateAntiSpoofDiagnostics({alignment:alignmentSummary.count
+			?`${alignmentSummary.count}프레임 · 정렬 후 거리 개선 ${alignmentSummary.improved} / 악화 ${alignmentSummary.worsened} · 중앙 변화 ${alignmentSummary.medianDelta.toFixed(2)} (기술 통계, 판정 아님)`
+			:`측정 없음${alignmentFailure?` · ${alignmentFailure}`:''} (기본 참고 분석으로 계속 진행)`});
 		let selfText='확인 불가';
 		if(referenceFace){
 			const again=await awaitAnalysisStep(model.detect(reference),deadline-Date.now());

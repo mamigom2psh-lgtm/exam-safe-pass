@@ -185,6 +185,67 @@
 		};
 	}
 
+	// Exploratory FAR/FRR at caller-supplied distance cut-offs. A "match" means distance <= cutoff.
+	// It never picks a cutoff; error rates are only marked reportable when both classes are large enough.
+	function computeErrorRates(groups, cutoffs, minPerClass = 30) {
+		const clean = (v) => (Array.isArray(v) ? v : []).filter((x) => Number.isFinite(x) && x >= 0);
+		const same = clean(groups && groups.same);
+		const other = clean(groups && groups.other);
+		const readiness = assessThresholdReadiness({ same, other }, minPerClass);
+		const rows = (Array.isArray(cutoffs) ? cutoffs : []).filter(Number.isFinite).map((cutoff) => ({
+			cutoff,
+			frr: same.length ? same.filter((d) => d > cutoff).length / same.length : null,
+			far: other.length ? other.filter((d) => d <= cutoff).length / other.length : null,
+		}));
+		return { exploratory: true, reportable: readiness.sampleSufficient, counts: readiness.counts, minPerClass, rows, recommendedThreshold: null };
+	}
+
+	// Compares paired baseline/aligned distances of the same image pairs.
+	function summarizeAlignmentEffect(pairs) {
+		const valid = (Array.isArray(pairs) ? pairs : []).filter((p) => Number.isFinite(p?.baseline) && Number.isFinite(p?.aligned));
+		if (!valid.length) return { count: 0 };
+		const deltas = valid.map((p) => p.aligned - p.baseline).sort((a, b) => a - b);
+		const mid = deltas.length >> 1;
+		return {
+			count: valid.length,
+			improved: deltas.filter((d) => d < 0).length,
+			worsened: deltas.filter((d) => d > 0).length,
+			medianDelta: deltas.length % 2 ? deltas[mid] : (deltas[mid - 1] + deltas[mid]) / 2,
+			conclusion: 'descriptive_only',
+		};
+	}
+
+	// Per-attack-type PAD error rates (ISO/IEC 30107-3 style). APCER = attacks accepted as live,
+	// BPCER = bona fide rejected. Never returns a recommended threshold; attack types with
+	// fewer than minPerClass samples are marked unreportable.
+	function evaluatePadSamples(samples, threshold, minPerClass = 30) {
+		const list = (Array.isArray(samples) ? samples : []).filter((s) => Number.isFinite(s?.score) && typeof s?.truth === 'string');
+		const classes = {};
+		for (const s of list) {
+			const key = s.truth === 'bona_fide' ? 'bona_fide' : String(s.attack_type || 'unspecified_attack');
+			(classes[key] = classes[key] || []).push(s.score);
+		}
+		const out = {};
+		for (const [key, scores] of Object.entries(classes)) {
+			const accepted = scores.filter((v) => v >= threshold).length;
+			out[key] = {
+				count: scores.length,
+				acceptedAsLive: accepted,
+				rate: accepted / scores.length,
+				metric: key === 'bona_fide' ? 'BPCER=1-rate' : 'APCER=rate',
+				reportable: scores.length >= minPerClass,
+			};
+		}
+		const types = ['phone_screen', 'printed_photo', 'replay_video'];
+		return {
+			threshold,
+			classes: out,
+			untestedAttackTypes: types.filter((t) => !out[t]),
+			reportable: Object.values(out).length > 0 && Object.values(out).every((c) => c.reportable),
+			recommendedThreshold: null,
+		};
+	}
+
 	function cameraErrorMessage(name) {
 		const messages = {
 			NotAllowedError: '카메라 권한이 거부되었습니다. 사이트 설정에서 권한을 허용한 뒤 다시 시도하세요.',
@@ -195,7 +256,7 @@
 		return messages[name] || '카메라를 열지 못했습니다. 권한과 장치 상태를 확인하세요.';
 	}
 
-	const api = { evaluate, browserVerificationState, evaluatePadEvidence, assessThresholdReadiness, explainHumanDistance, summarizeScoreDistribution, inspectFace, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage };
+	const api = { evaluate, browserVerificationState, evaluatePadEvidence, assessThresholdReadiness, computeErrorRates, summarizeAlignmentEffect, evaluatePadSamples, explainHumanDistance, summarizeScoreDistribution, inspectFace, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage };
 	root.ExamFaceSimilarity = api;
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(globalThis);
