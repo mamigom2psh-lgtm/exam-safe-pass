@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "scripts": {
+    "build:qr": "esbuild vendor/qr-decoder-entry.js --bundle --minify --format=iife --outfile=vendor/qr-decoder.min.js",
+    "build:face": "esbuild node_modules/@vladmandic/human/dist/human.esm.js --bundle --minify --format=iife --global-name=HumanBundle --outfile=vendor/human/human.bundle.js",
+    "test:face": "node --test tests/test_face_similarity.js"
+  },
+  "dependencies": {
+    "@vladmandic/human": "3.3.6"
+  },
+  "devDependencies": {
+    "@zxing/browser": "0.2.1",
+    "esbuild": "0.28.2",
+    "pngjs": "7.0.0"
+  }
+}

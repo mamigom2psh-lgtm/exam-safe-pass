@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EXAM SAFE PASS | 공모전 시연</title>
+<style>
+:root{font-family:system-ui,'Malgun Gothic',sans-serif;color:#142b49;background:#eef3f9}*{box-sizing:border-box}body{margin:0}header{background:#163b70;color:white;padding:26px max(20px,calc((100vw - 1000px)/2))}header h1{margin:0;font-size:27px}header p{margin:7px 0 0;color:#c8daf1}.wrap{max-width:1000px;margin:28px auto;padding:0 16px}.notice{background:#fff4d7;border:1px solid #f0cf7c;border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:18px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tabs button{background:white;color:#254369;border:1px solid #cbd6e4}.tabs button.active{background:#2057a0;color:white}.panel{background:white;border-radius:16px;padding:24px;box-shadow:0 5px 22px #1b3c6912;display:none}.panel.active{display:block}h2{margin-top:0}button{border:0;border-radius:9px;padding:12px 16px;background:#245baa;color:white;font-size:14px;font-weight:700;cursor:pointer}button:hover{filter:brightness(.95)}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#b83243}.muted{background:#64748b}.actions{display:flex;gap:9px;flex-wrap:wrap;margin:18px 0}.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.tile{border:1px solid #e1e8f1;border-radius:12px;padding:16px}.tile span{display:block;color:#66788f;font-size:12px;margin-bottom:8px}.tile strong{font-size:20px}.status{padding:14px;border-radius:10px;background:#eaf2ff;color:#15447d;margin-top:14px;font-weight:650;min-height:50px}.status.good{background:#e5f6eb;color:#17663b}.status.bad{background:#ffe8ea;color:#a42635}.status.warn{background:#fff3da;color:#7a500c}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:12px;text-align:left;border-bottom:1px solid #e5eaf1}th{background:#f4f7fb}.small{color:#65768c;font-size:13px;line-height:1.6}select,input{padding:11px;border:1px solid #bfcde0;border-radius:8px;max-width:100%}input[type=password],input[type=text]{width:min(100%,420px)}.log{max-height:300px;overflow:auto}.footer{text-align:center;color:#6a7890;font-size:12px;margin:25px}.portrait{display:block;width:128px;height:160px;object-fit:cover;border-radius:8px;margin:8px 0;border:1px solid #d5deea}.photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}.photo-card{margin:0;border:1px solid #dce5ef;border-radius:10px;padding:12px;min-width:0}.photo-card figcaption{font-size:13px;font-weight:700;color:#254369;margin-bottom:10px}.photo-card img{display:block;width:100%;height:260px;object-fit:cover;object-position:center 25%;border-radius:7px;background:#eef3f9}.scenario-control{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}.scenario-control label{font-weight:700}.token-box{overflow-wrap:anywhere;background:#f4f7fb;border:1px solid #dce5ef;border-radius:9px;padding:12px;font-family:ui-monospace,monospace}.token-box code{user-select:all}.qr-image{display:block;width:min(100%,300px);height:auto;padding:8px;background:#fff;border:1px solid #dce5ef;border-radius:8px}.camera-preview{display:block;width:min(100%,480px);max-height:360px;background:#12243a;border-radius:10px;margin-top:10px}.manual-token{margin-top:16px}.manual-token input{width:min(100%,520px)}@media(max-width:600px){.panel{padding:16px}.photo-grid{grid-template-columns:1fr}.photo-card img{height:320px}}@media(max-width:520px){header h1{font-size:23px}}
+</style>
+<style>
+.method-choice{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 20px}
+.method-choice button{background:#fff;color:#254369;border:1px solid #cbd6e4}
+.method-choice button.active{background:#2057a0;color:#fff}
+.checklist{display:grid;gap:12px;margin:16px 0}
+.checklist label{display:grid;gap:6px}
+.policy-box{background:#f4f7fb;border-left:4px solid #5080bd;padding:12px 14px;border-radius:7px}
+</style>
+</head>
+<body>
+<header>
+<h1>EXAM SAFE PASS</h1>
+<p>시험장 안심패스 플러스 · 모의 본인확인 절차 시연</p>
+</header>
+<main class="wrap">
+<div class="notice"><strong>공모전 시제품 · 실제 신원인증 아님</strong> · 모든 개인정보와 인물은 가상 데이터입니다. 공식 기관의 승인이나 실제 신원확인 절차가 없으며, 화면 결과는 실제 입실 자격을 부여하지 않습니다. 신분증 사진 및 민감한 개인정보는 저장하지 않습니다.</div>
+<nav class="tabs" aria-label="화면 선택">
+<button class="active" data-tab="candidate">응시자</button>
+<button data-tab="proctor">감독관</button>
+<button data-tab="supervisor">현장 책임자</button>
+<button data-tab="security">보안 테스트</button>
+<button data-tab="admin">관리자</button>
+</nav>
+<section class="panel active" id="candidate">
+<p class="small"><strong>공모전 시제품 · 실제 모바일신분증 인증 아님 · 실제 신원인증 아님</strong></p>
+<h2>응시자 본인확인</h2>
+<div class="method-choice" role="group" aria-label="본인확인 방법 선택">
+<button class="active" type="button" data-method="mobile">모바일신분증 인증</button>
+<button type="button" data-method="physical">실물 신분증 인증</button>
+<button type="button" data-method="exception">현장 책임자 예외 확인</button>
+</div>
+<div id="mobileMethod">
+<div class="info">
+<div class="tile"><span>시험명</span><strong>2026 모의 자격시험</strong></div>
+<div class="tile"><span>수험번호</span><strong>2026-0012</strong></div>
+<div class="tile"><span>응시자</span><strong>김안심 (가상)</strong></div>
+</div>
+<div class="tile"><span>가상 증명사진</span><img class="portrait" src="images/candidate.jpg" alt="가상 응시자 김안심의 증명사진"><strong>김안심 · 가상 데이터</strong></div>
+<p class="small">시연용 mock provider가 가상 성공/실패 결과를 반환합니다. 모의 인증 성공 후에만 서버가 30초 유효한 일회용 토큰을 발급합니다. 감독관의 명부 확인과 수동 얼굴 대조가 모두 일치해야 입실할 수 있습니다.</p>
+<label for="candidateKey">시연 응시자 로그인 키</label><br>
+<input id="candidateKey" type="password" autocomplete="off" value="demo-candidate-key" placeholder="응시자 로그인 키">
+<div class="actions">
+<button id="loginCandidate" class="muted" type="button">응시자 로그인</button>
+<button id="issue">모의 인증 및 QR 발급</button>
+<button id="reset" class="muted">전체 시연 초기화</button>
+</div>
+<div id="tokenPanel" hidden>
+<p class="small">QR에는 개인정보가 아닌 임의의 일회용 토큰만 담깁니다. 감독관이 이 QR을 스캔하거나 아래 토큰을 전달할 수 있습니다.</p>
+<img id="tokenQr" class="qr-image" alt="30초 유효 일회용 인증 토큰 QR 코드">
+<div class="token-box"><code id="tokenValue"></code></div>
+<button id="copyToken" class="muted" type="button">토큰 복사</button>
+<p id="tokenCountdown" class="small"></p>
+</div>
+<div id="candidateStatus" class="status" aria-live="polite">인증 대기 중</div>
+</div>
+<div id="physicalMethod" hidden>
+<div class="policy-box"><strong>실물 신분증 모의 확인</strong><p class="small">감독관이 신분증 원본, 응시원서 등록 사진, 현장 얼굴을 각각 직접 대조합니다. 서버의 모의 허용 목록에 포함된 문서 종류와 세 항목 모두 일치해야 승인 요청이 가능합니다. 신분증 사진·번호·생년월일 등은 입력하거나 저장하지 않습니다.</p></div>
+<p class="small">모의 허용 문서 종류: 주민등록증, 운전면허증, 여권. 이는 시제품 내부 설정일 뿐 시험 주관기관의 실제 승인이나 정책을 의미하지 않습니다.</p>
+<button type="button" class="open-role" data-open-tab="proctor">감독관 확인 화면 열기</button>
+</div>
+<div id="exceptionMethod" hidden>
+<div class="policy-box"><strong>휴대전화와 허용 신분증이 모두 없는 경우</strong><p class="small">자동 승인하지 않고 '신원확인 보류'가 기본입니다. 책임자 예외 승인은 시제품에 미리 설정된 모의 대체 절차(응시원서 원본 확인, 등록 사진 대조, 직원 2인 입회)를 모두 수행하고 책임자가 직접 확인한 경우만 허용됩니다.</p></div>
+<button type="button" class="open-role" data-open-tab="supervisor">현장 책임자 확인 화면 열기</button>
+</div>
+</section>
+<section class="panel" id="proctor">
+<p class="small"><strong>공모전 시제품 · 실제 모바일신분증 인증 아님 · 실제 신원인증 아님</strong></p>
+<h2>감독관 현장 확인</h2>
+<div class="info">
+<div class="tile"><span>응시자 명부</span><strong id="rosterName">김안심</strong></div>
+<div class="tile"><span>수험번호</span><strong id="rosterNumber">2026-0012</strong></div>
+<div class="tile"><span>모의 신분인증</span><strong id="verifyState">미완료</strong></div>
+</div>
+<p class="small">시연 권한은 서버 시작 시 출력된 감독관 키로 확인합니다. 등록 사진과 현장 사진을 보고 직접 판정해 주세요.</p>
+<label for="proctorKey">시연 감독관 키</label><br>
+<input id="proctorKey" type="password" autocomplete="off" value="demo-proctor-key" placeholder="서버 시작 로그의 감독관 키">
+<div class="actions">
+<button id="loginProctor" class="muted" type="button">감독관 로그인</button>
+<button id="startScanner" type="button">카메라로 QR 스캔 시작</button>
+<button id="stopScanner" class="muted" type="button" disabled>카메라 중지</button>
+</div>
+<video id="scannerVideo" class="camera-preview" playsinline muted hidden></video>
+<div id="scannerStatus" class="status" aria-live="polite">카메라를 시작하거나 아래에 토큰을 직접 입력하세요.</div>
+<div class="manual-token">
+<label for="qrImageFile">QR 이미지 파일로 확인 (카메라 미지원·권한 거부 시)</label><br>
+<input id="qrImageFile" type="file" accept="image/*" capture="environment">
+<p class="small">QR 코드가 선명하고 잘리지 않은 이미지 파일을 선택하세요. 이미지는 브라우저에서만 처리됩니다.</p>
+</div>
+<div class="manual-token">
+<label for="manualToken">수동 토큰 입력 (카메라 미지원·권한 거부 시)</label><br>
+<input id="manualToken" type="text" autocomplete="off" placeholder="응시자 QR 아래 토큰을 붙여넣기">
+<button id="verifyToken" type="button">토큰 서버 확인</button>
+</div>
+<div id="scannedCandidate" class="tile" hidden><span>서버 확인된 명부 정보</span><strong id="scannedCandidateDetails"></strong></div>
+<div class="photo-grid" aria-label="등록 사진과 현장 사진 비교">
+<figure class="photo-card"><figcaption>등록 사진 · 가상 명부</figcaption><img id="rosterPhoto" src="images/candidate.jpg" alt="응시자 명부에 등록된 가상 사진"></figure>
+<figure class="photo-card"><figcaption id="fieldPhotoLabel">현장 확인 대상 사진 · 정상 응시</figcaption><img id="fieldPhoto" src="images/candidate.jpg" alt="정상 응시 시나리오의 현장 확인 대상 사진"></figure>
+</div>
+<div class="scenario-control"><label for="photoScenario">응시 시나리오</label><select id="photoScenario"><option value="normal">정상 응시 · candidate.jpg</option><option value="impostor">대리응시 · impostor.png</option><option value="alternate">다른 가상 인물 · candidate2.png</option></select></div>
+<p class="small">실제 얼굴 대조는 수행되지 않습니다. 감독관이 사진과 현장 상황을 확인한 뒤 직접 판정합니다.</p>
+<label><input id="rosterMatch" type="checkbox"> 명부의 시험·응시자 정보가 일치함을 확인했습니다.</label><br><br>
+<label for="face">현장 얼굴 대조 결과</label> <select id="face">
+<option value="none">선택해 주세요</option><option value="match">일치 (감독관 확인)</option><option value="mismatch">불일치</option>
+</select>
+<div class="actions"><button id="approve">입실 승인 요청</button><button id="reject" class="danger">입실 보류</button></div>
+<div id="proctorStatus" class="status" aria-live="polite">현장 확인 대기 중</div>
+<hr>
+<h3>실물 신분증 모의 확인</h3>
+<p class="small">서버는 주민등록증·운전면허증·여권만 모의 허용 목록으로 처리합니다. 기관 승인 여부를 실제로 확인하지 않습니다. 신분증 원본, 등록 사진, 현장 얼굴을 직접 비교하고 결과만 입력하세요. 식별정보나 사진은 저장되지 않습니다.</p>
+<label for="physicalDocumentType">신분증 종류</label><br>
+<select id="physicalDocumentType"><option value="">선택해 주세요</option><option value="resident_card">주민등록증</option><option value="driver_license">운전면허증</option><option value="passport">여권</option><option value="other">기타/모의 허용 목록 외</option><option value="none">제시할 신분증 없음</option></select>
+<div class="checklist">
+<label for="physicalDocumentMatch">신분증 원본의 유효성·현장 인물 대조</label><select id="physicalDocumentMatch"><option value="none">선택해 주세요</option><option value="match">일치 확인</option><option value="mismatch">불일치</option><option value="unable">확인 불가</option></select>
+<label for="physicalPhotoMatch">응시원서 등록 사진과 대조</label><select id="physicalPhotoMatch"><option value="none">선택해 주세요</option><option value="match">일치 확인</option><option value="mismatch">불일치</option><option value="unable">확인 불가</option></select>
+<label for="physicalFaceMatch">현장 얼굴과 직접 대조</label><select id="physicalFaceMatch"><option value="none">선택해 주세요</option><option value="match">일치 확인</option><option value="mismatch">불일치</option><option value="unable">확인 불가</option></select>
+</div>
+<div class="actions"><button id="submitPhysical">서버에 일회성 모의 승인 요청</button><button id="holdIdentity" class="muted">신원확인 보류</button><button id="rejectPhysical" class="danger">불일치/의심 기록</button></div>
+<div id="physicalStatus" class="status" aria-live="polite">확인 결과 미제출 · 자동 승인되지 않습니다.</div>
+<hr>
+<h3>공용 키오스크 요청 확인</h3>
+<p class="small"><strong>공모전 시제품 · 실제 신원인증 아님</strong> · 키오스크 응시자의 등록 사진을 확인하고, 기관이 허용한 신분증 원본과 현장 얼굴을 직접 대조하세요. 통과한 경우에만 키오스크에 30초 일회용 QR이 표시됩니다. 입실구에서 별도 QR 검사 및 얼굴 재확인이 필요합니다.</p>
+<div class="actions"><button id="refreshKioskRequests" class="muted" type="button">키오스크 확인 요청 새로고침</button></div>
+<div id="kioskRequestStatus" class="status" aria-live="polite">감독관 로그인 후 요청을 불러오세요.</div>
+<div id="kioskRequests" class="info"></div>
+</section>
+<section class="panel" id="supervisor">
+<p class="small"><strong>공모전 시제품 · 실제 모바일신분증 인증 아님 · 실제 신원인증 아님</strong></p>
+<h2>현장 책임자 예외 확인</h2>
+<p class="small">감독관 키와 별도로 현장 책임자 역할을 서버에서 확인합니다. 예외 절차는 시제품에 사전 설정된 모의 절차이며 기관의 실제 승인으로 간주되지 않습니다.</p>
+<label for="supervisorKey">시연 현장 책임자 키</label><br>
+<input id="supervisorKey" type="password" autocomplete="off" value="demo-supervisor-key" placeholder="서버 시작 로그의 현장 책임자 키">
+<div class="actions"><button id="loginSupervisor" class="muted" type="button">현장 책임자 로그인</button></div>
+<div class="policy-box"><strong>사전 설정된 모의 절차: 응시원서 원본 + 사진 + 직원 2인 확인</strong><p class="small">이름·생년월일·수험번호 또는 사진 하나만으로 승인할 수 없습니다. 모든 확인 항목과 책임자 확인이 필요하며, 미완료 시 보류 또는 거부됩니다.</p></div>
+<div class="checklist">
+<label><input id="exceptionApplication" type="checkbox"> 응시원서 원본 등 사전 지정 자료를 직접 확인</label>
+<label><input id="exceptionPhoto" type="checkbox"> 응시원서 등록 사진과 현장 인물을 대조</label>
+<label><input id="exceptionWitnesses" type="checkbox"> 직원 2인이 별도로 입회·확인</label>
+<label><input id="exceptionSupervisor" type="checkbox"> 책임자로서 모의 절차 전체 완료를 확인</label>
+</div>
+<div class="actions"><button id="approveException">사전 지정 예외 절차 승인 요청</button><button id="holdException" class="muted">신원확인 보류</button><button id="rejectException" class="danger">예외 확인 거부 기록</button></div>
+<div id="exceptionStatus" class="status" aria-live="polite">책임자 인증 후 확인할 수 있습니다.</div>
+</section>
+<section class="panel" id="security">
+<p class="small"><strong>공모전 시제품 · 실제 모바일신분증 인증 아님 · 실제 신원인증 아님</strong></p>
+<h2>보안 시나리오 테스트</h2>
+<p class="small">이 시나리오들은 서버 API로 요청되며 실제 서버의 토큰 검증 결과와 기록을 확인합니다. 만료 테스트는 새 토큰의 30초 유효기간이 지난 뒤 자동 요청합니다.</p>
+<div class="actions">
+<button data-test="other">타인 토큰 사용</button><button data-test="expired">만료된 인증</button><button data-test="replay">인증정보 재사용</button><button data-test="duplicate">중복 입실</button><button data-test="offline">네트워크 장애 안내</button>
+</div>
+<div id="securityStatus" class="status" aria-live="polite">테스트를 선택하세요.</div>
+</section>
+<section class="panel" id="admin">
+<p class="small"><strong>공모전 시제품 · 실제 모바일신분증 인증 아님 · 실제 신원인증 아님</strong></p>
+<h2>관리자 대시보드</h2>
+<p class="small">시연 관리자 키로 SQLite 서버 기록을 조회합니다. 감독관 키와 별도의 권한입니다.</p>
+<label for="adminKey">시연 관리자 키</label><br>
+<input id="adminKey" type="password" autocomplete="off" value="demo-admin-key" placeholder="서버 시작 로그의 관리자 키">
+<div class="actions"><button id="loginAdmin" class="muted" type="button">관리자 로그인</button><button id="loadDashboard">서버 기록 새로고침</button></div>
+<div id="adminStatus" class="status" aria-live="polite">관리자 인증 후 서버 기록을 불러오세요.</div>
+<fieldset id="adminKioskTestPanel" hidden>
+<legend>관리자 전용 키오스크 DEMO 테스트</legend>
+<p class="small">선택한 결과는 모의 테스트에만 적용됩니다. 실제 신원확인이나 입실 승인으로 사용할 수 없습니다. 모든 요청은 관리자 권한을 서버에서 확인하고 감사 기록에 남깁니다.</p>
+<div class="scenario-control">
+<label for="mockAuthOutcome">모바일 인증 DEMO 결과</label>
+<select id="mockAuthOutcome"><option value="success">성공</option><option value="failure">실패</option></select>
+</div>
+<div class="scenario-control">
+<label for="kioskTestCandidateNumber">가상 수험번호</label>
+<input id="kioskTestCandidateNumber" type="text" value="2026-0012" autocomplete="off">
+</div>
+<div class="scenario-control">
+<label for="kioskTestOutcome">모의 인증 결과</label>
+<select id="kioskTestOutcome">
+<option value="success">DEMO 성공</option>
+<option value="failure">DEMO 실패</option>
+<option value="uncertain">DEMO 불확실</option>
+<option value="mismatch">DEMO 불일치</option>
+</select>
+</div>
+<button id="runKioskSelfTest" type="button">관리자 테스트 실행</button>
+<div id="adminKioskTestStatus" class="status" aria-live="polite">관리자 인증 후 사용할 수 있습니다.</div>
+</fieldset>
+<div class="info">
+<div class="tile"><span>가상 명부 인원</span><strong id="countCandidates">-명</strong></div>
+<div class="tile"><span>입실 완료</span><strong id="countAdmitted">-명</strong></div>
+<div class="tile"><span>차단·거부 이벤트</span><strong id="countBlocked">-건</strong></div>
+</div>
+<h3>서버 이벤트 기록</h3>
+<fieldset id="eventFilters">
+<legend>이벤트 검색 (DEMO 기록과 운영 기록은 구분 조회)</legend>
+<label for="filterDomain">구분</label>
+<select id="filterDomain"><option value="">전체</option><option value="demo">DEMO</option><option value="operational">운영</option></select>
+<label for="filterEvent">이벤트 유형</label><input id="filterEvent" type="text" maxlength="60" autocomplete="off">
+<label for="filterAuthPath">인증 경로</label>
+<select id="filterAuthPath"><option value="">전체</option><option value="self_demo">셀프 DEMO</option><option value="mobile_id">모바일신분증(모의)</option><option value="proctor">감독관 대면</option><option value="kiosk">키오스크</option></select>
+<label for="filterOutcome">결과</label>
+<select id="filterOutcome"><option value="">전체</option><option value="accepted">성공(accepted)</option><option value="blocked">차단(blocked)</option><option value="rejected">거부(rejected)</option><option value="pending">대기(pending)</option><option value="demo_admitted">DEMO 입실(demo_admitted)</option><option value="admitted">입실(admitted)</option></select>
+<label for="filterSince">시작 시각(UTC, ISO)</label><input id="filterSince" type="text" placeholder="2026-10-29T00:00:00" autocomplete="off">
+<label for="filterUntil">종료 시각(UTC, ISO)</label><input id="filterUntil" type="text" placeholder="2026-10-29T23:59:59" autocomplete="off">
+<p class="small">응시자 번호는 끝 3자리만 표시됩니다. 얼굴 이미지와 생체 특징값은 기록되지 않습니다.</p>
+</fieldset>
+<div class="log"><table><thead><tr><th>시간</th><th>이벤트</th><th>결과</th><th>행위자</th><th>구분</th><th>인증 경로</th><th>응시자</th></tr></thead><tbody id="logs"><tr><td colspan="7">기록 없음</td></tr></tbody></table></div>
+</section>
+<p class="footer">공모전 시제품 · 실제 신원인증 아님 · 공식 기관의 승인/절차 없이 실제 입실을 허용하지 않습니다.</p>
+</main>
+<script src="/vendor/qr-decoder.min.js"></script>
+<script>
+const EXAM_ID='exam-demo-2026', CANDIDATE_ID='candidate-001';
+const $=id=>document.getElementById(id);
+let currentToken='', tokenExpiresAt=0, countdownTimer=0, demoAdmitted=false;
+let verifiedToken='', selectedCandidateId=CANDIDATE_ID, scanStream=null, scanFrame=0, scanTimeout=0;
+let scanGeneration=0, scanInProgress=false, cameraStarting=false, tokenSubmissionInProgress=false;
+let barcodeDetector=null, useZxingDecoder=false;
+const qrDecoderReady=typeof window.ExamSafeQrDecoder?.decodeCanvas==='function'
+	&&typeof window.ExamSafeQrDecoder?.decodeImage==='function';
+const DEMO_LOGIN_CREDENTIALS={candidate:{username:'candidate-demo',password:'candidate-demo-123'},proctor:{username:'proctor-demo',password:'proctor-demo-123'},admin:{username:'admin-demo',password:'admin-demo-123'},supervisor:{username:'supervisor-demo',password:'supervisor-demo-123'}};
+async function api(path,method='GET',body=null,role='',key=''){
+	const headers={'Content-Type':'application/json'};
+	if(role){headers['X-Demo-Role']=role;headers['X-Demo-Key']=key}
+	const response=await fetch(path,{method,headers,body:body===null?undefined:JSON.stringify(body),cache:'no-store',credentials:'same-origin'});
+	let data={};
+	try{data=await response.json()}catch(error){throw new Error('서버 응답을 읽을 수 없습니다.')}
+	if(!response.ok)throw new Error(data.error||`요청 실패 (${response.status})`);
+	return data;
+}
+async function loginAs(role){
+	const keyMap={candidate:$('candidateKey').value,proctor:$('proctorKey').value,admin:$('adminKey').value,supervisor:$('supervisorKey').value};
+	const key=keyMap[role];
+	if(!key){throw new Error(`${role==='candidate'?'응시자':role==='proctor'?'감독관':role==='supervisor'?'현장 책임자':'관리자'} 키를 입력해 주세요.`)}
+	const credentials=DEMO_LOGIN_CREDENTIALS[role];
+	return api('/api/login','POST',{role, demo_key:key, username:credentials.username, password:credentials.password});
+}
+function status(id,message,type=''){const el=$(id);el.textContent=message;el.className='status '+type}
+function renderVerifyState(){
+	$('verifyState').textContent=demoAdmitted?'입실 완료':currentToken?(Date.now()<tokenExpiresAt?'완료':'만료'):'미완료';
+}
+function updateCountdown(){
+	if(!currentToken)return;
+	const remaining=Math.max(0,Math.ceil((tokenExpiresAt-Date.now())/1000));
+	$('tokenCountdown').textContent=remaining?`서버 만료까지 ${remaining}초`:'토큰이 만료되었습니다.';
+	renderVerifyState();
+	if(!remaining)clearInterval(countdownTimer);
+}
+function clearInspectedToken(){
+	verifiedToken='';
+	selectedCandidateId=CANDIDATE_ID;
+	$('scannedCandidate').hidden=true;
+	$('rosterName').textContent='김안심';
+	$('rosterNumber').textContent='2026-0012';
+	$('rosterPhoto').src='images/candidate.jpg';
+	$('rosterPhoto').alt='응시자 명부에 등록된 가상 사진';
+	$('rosterMatch').checked=false;
+	$('face').value='none';
+}
+async function authenticateMock(candidateId=CANDIDATE_ID,demoOutcome='success'){
+	return api('/api/mobile-id/authenticate','POST',{exam_id:EXAM_ID,candidate_id:candidateId,demo_outcome:demoOutcome});
+}
+async function issueToken(candidateId=CANDIDATE_ID,authSessionId){
+	const issued=await api('/api/demo/token','POST',{exam_id:EXAM_ID,candidate_id:candidateId,auth_session_id:authSessionId});
+	if(issued.demo_only!==true)throw new Error('서버가 DEMO 전용 QR로 확인하지 못했습니다.');
+	if(candidateId===CANDIDATE_ID){
+		clearInspectedToken();
+		currentToken=issued.token;
+		tokenExpiresAt=Date.now()+issued.expires_in*1000;
+		$('tokenPanel').hidden=false;
+		$('tokenValue').textContent=issued.token;
+		$('tokenQr').src=`data:image/png;base64,${issued.qr_png}`;
+		clearInterval(countdownTimer);
+		updateCountdown();
+		countdownTimer=setInterval(updateCountdown,1000);
+		renderVerifyState();
+	}
+	return issued;
+}
+async function issueMockToken(candidateId){
+	const auth=await authenticateMock(candidateId,'success');
+	if(!auth.success)throw new Error(auth.message);
+	return issueToken(candidateId,auth.auth_session_id);
+}
+async function inspectToken(token){
+	const result=await api('/api/demo/token/inspect','POST',{exam_id:EXAM_ID,token},'proctor',$('proctorKey').value);
+	if(result.demo_only!==true||result.real_admission!==false)throw new Error('운영 토큰은 이 DEMO 화면에서 확인할 수 없습니다.');
+	verifiedToken=token;
+	selectedCandidateId=result.candidate_id;
+	$('rosterName').textContent=result.candidate_name;
+	$('rosterNumber').textContent=result.candidate_number;
+	$('rosterPhoto').src=result.candidate_id==='candidate-002'?'images/candidate2.png':'images/candidate.jpg';
+	$('rosterPhoto').alt=`${result.candidate_name}의 가상 명부 등록 사진`;
+	if($('photoScenario').value==='normal'){
+		$('fieldPhoto').src=$('rosterPhoto').src;
+		$('fieldPhoto').alt='현장 수동 대조 대상 가상 사진';
+	}
+	$('scannedCandidateDetails').textContent=`${result.candidate_name} · ${result.candidate_number} · ${result.exam_id}`;
+	$('scannedCandidate').hidden=false;
+	$('rosterMatch').checked=false;
+	$('face').value='none';
+	status('scannerStatus',`DEMO QR 확인 · 만료까지 약 ${result.expires_in}초 · 모의 명부와 사진 대조를 진행해 주세요. 실제 입실에는 사용할 수 없습니다.`,'warn');
+}
+async function approveToken(token=verifiedToken,candidateId=selectedCandidateId,faceMatch=$('face').value==='match'){
+	return api('/api/demo/approve','POST',{exam_id:EXAM_ID,candidate_id:candidateId,token,roster_match:true,face_match:faceMatch},'proctor',$('proctorKey').value);
+}
+function stopQrScanner(message='카메라가 중지되었습니다.',type='warn'){
+	scanGeneration++;
+	if(scanFrame)cancelAnimationFrame(scanFrame);
+	scanFrame=0;
+	if(scanTimeout)clearTimeout(scanTimeout);
+	scanTimeout=0;
+	if(scanStream){scanStream.getTracks().forEach(track=>track.stop());scanStream=null}
+	cameraStarting=false;
+	$('scannerVideo').pause();
+	$('scannerVideo').srcObject=null;
+	$('scannerVideo').hidden=true;
+	$('startScanner').disabled=false;
+	$('stopScanner').disabled=true;
+	if(message)status('scannerStatus',message,type);
+}
+
+function useNativeBarcodeDetector(){
+	if(useZxingDecoder)return false;
+	if(typeof window.BarcodeDetector!=='function'){
+		useZxingDecoder=true;
+		return false;
+	}
+	if(!barcodeDetector){
+		try{barcodeDetector=new window.BarcodeDetector({formats:['qr_code']})}
+		catch(error){useZxingDecoder=true;return false}
+	}
+	return true;
+}
+
+async function decodeQrFromSource(source,sourceType){
+	if(useNativeBarcodeDetector()){
+		try{
+			const codes=await barcodeDetector.detect(source);
+			return codes.find(code=>code.rawValue)?.rawValue||null;
+		}catch(error){
+			if(error.name==='NotSupportedError'||error.name==='TypeError'){
+				useZxingDecoder=true;
+				barcodeDetector=null;
+			}else{
+				throw error;
+			}
+		}
+	}
+	if(!window.ExamSafeQrDecoder)throw new Error('로컬 QR 판독기를 불러오지 못했습니다. 페이지를 새로고침하거나 수동 토큰 입력을 이용해 주세요.');
+	return sourceType==='image'
+		?window.ExamSafeQrDecoder.decodeImage(source)
+		:window.ExamSafeQrDecoder.decodeCanvas(source);
+}
+
+function scanCameraError(error){
+	switch(error.name){
+		case 'NotAllowedError':
+			return '카메라 권한이 거부되었거나 브라우저 정책으로 차단되었습니다. 사이트 권한에서 카메라를 허용하거나 QR 이미지 업로드를 이용해 주세요.';
+		case 'NotFoundError':
+			return '사용 가능한 카메라가 없습니다. QR 이미지 업로드 또는 수동 토큰 입력을 이용해 주세요.';
+		case 'NotReadableError':
+		case 'TrackStartError':
+			return '카메라가 다른 앱에서 사용 중이거나 운영체제에서 접근할 수 없습니다. 다른 앱을 닫거나 QR 이미지 업로드를 이용해 주세요.';
+		case 'OverconstrainedError':
+			return '요청한 카메라 설정을 사용할 수 없습니다. 카메라를 다시 연결하거나 QR 이미지 업로드를 이용해 주세요.';
+		case 'SecurityError':
+			return '브라우저가 카메라 접근을 차단했습니다. HTTPS 또는 localhost에서 열고 사이트 권한을 확인해 주세요.';
+		case 'AbortError':
+			return '카메라 시작이 중단되었습니다. 다시 시도하거나 QR 이미지 업로드를 이용해 주세요.';
+		case 'TypeError':
+			return '이 브라우저에서 카메라 API를 사용할 수 없습니다. HTTPS 또는 localhost를 확인하고 QR 이미지 업로드를 이용해 주세요.';
+		default:
+			return '카메라를 시작할 수 없습니다. 브라우저 권한을 확인하거나 QR 이미지 업로드를 이용해 주세요.';
+	}
+}
+
+async function submitRecognizedToken(token){
+	if(tokenSubmissionInProgress)return;
+	tokenSubmissionInProgress=true;
+	$('verifyToken').disabled=true;
+	try{
+		$('manualToken').value=token;
+		await loginAs('proctor');
+		await inspectToken(token);
+	}catch(error){
+		clearInspectedToken();
+		status('scannerStatus',`QR 판독 후 서버 확인에 실패했습니다: ${error.message}`,'bad');
+	}finally{
+		tokenSubmissionInProgress=false;
+		$('verifyToken').disabled=false;
+	}
+}
+
+function scheduleCameraScan(generation){
+	if(generation!==scanGeneration||!scanStream)return;
+	scanFrame=requestAnimationFrame(async()=>{
+		scanFrame=0;
+		if(generation!==scanGeneration||!scanStream)return;
+		if(scanInProgress){scheduleCameraScan(generation);return}
+		scanInProgress=true;
+		try{
+			const video=$('scannerVideo');
+			if(video.readyState>=2&&video.videoWidth&&video.videoHeight){
+				const scale=Math.min(1,720/video.videoWidth);
+				const canvas=document.createElement('canvas');
+				canvas.width=Math.max(1,Math.round(video.videoWidth*scale));
+				canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
+				canvas.getContext('2d',{willReadFrequently:true}).drawImage(video,0,0,canvas.width,canvas.height);
+				const token=await decodeQrFromSource(canvas,'canvas');
+				if(token&&generation===scanGeneration){
+					stopQrScanner('QR을 인식했습니다. 서버에서 토큰을 확인합니다.');
+					await submitRecognizedToken(token);
+					return;
+				}
+			}
+		}catch(error){
+			if(generation===scanGeneration){
+				stopQrScanner(`QR 카메라 판독에 실패했습니다: ${error.message} QR 이미지 업로드 또는 수동 입력을 이용해 주세요.`,'bad');
+			}
+			return;
+		}finally{
+			scanInProgress=false;
+		}
+		if(generation===scanGeneration)scheduleCameraScan(generation);
+	});
+}
+
+async function startQrScanner(){
+	if(cameraStarting||scanStream)return;
+	if(!qrDecoderReady){
+		status('scannerStatus','로컬 QR 판독기 파일을 불러오거나 초기화하지 못했습니다. 페이지를 새로고침해 다시 시도하고, QR 이미지 업로드 또는 수동 토큰 입력을 이용해 주세요.','bad');
+		return;
+	}
+	if(!window.isSecureContext){
+		status('scannerStatus','카메라 접근은 보안 연결에서만 가능합니다. HTTPS 또는 http://localhost 주소로 접속하거나 QR 이미지 업로드를 이용해 주세요.','warn');
+		return;
+	}
+	if(!navigator.mediaDevices||typeof navigator.mediaDevices.getUserMedia!=='function'){
+		status('scannerStatus','이 브라우저는 카메라 영상 API를 제공하지 않습니다. QR 이미지 업로드 또는 수동 토큰 입력을 이용해 주세요.','warn');
+		return;
+	}
+	const generation=++scanGeneration;
+	cameraStarting=true;
+	$('startScanner').disabled=true;
+	status('scannerStatus','카메라 권한을 확인하고 있습니다. 브라우저의 권한 요청을 승인해 주세요.');
+	try{
+		const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+		if(generation!==scanGeneration){
+			stream.getTracks().forEach(track=>track.stop());
+			return;
+		}
+		scanStream=stream;
+		const video=$('scannerVideo');
+		video.srcObject=scanStream;video.hidden=false;
+		await video.play();
+		if(generation!==scanGeneration){
+			stopQrScanner('');
+			return;
+		}
+		cameraStarting=false;
+		$('stopScanner').disabled=false;
+		status('scannerStatus',useNativeBarcodeDetector()
+			?'카메라가 준비되었습니다. QR 코드를 화면 안에 비춰 주세요.'
+			:'카메라가 준비되었습니다. 호환 QR 판독기로 스캔합니다.');
+		scanTimeout=setTimeout(()=>{
+			if(scanStream)status('scannerStatus','아직 QR을 인식하지 못했습니다. 조명을 밝히고 코드를 화면 안에 크게 맞추거나 이미지 업로드·수동 입력을 이용해 주세요.','warn');
+		},10000);
+		scheduleCameraScan(generation);
+	}catch(error){
+		if(generation!==scanGeneration)return;
+		stopQrScanner('', 'warn');
+		status('scannerStatus',scanCameraError(error),'warn');
+	}
+}
+document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{
+	document.querySelectorAll('[data-tab]').forEach(item=>item.classList.toggle('active',item===button));
+	document.querySelectorAll('.panel').forEach(panel=>panel.classList.toggle('active',panel.id===button.dataset.tab));
+	if(button.dataset.tab!=='proctor'&&(scanStream||cameraStarting))stopQrScanner();
+}));
+document.querySelectorAll('[data-method]').forEach(button=>button.addEventListener('click',()=>{
+	const method=button.dataset.method;
+	document.querySelectorAll('[data-method]').forEach(item=>item.classList.toggle('active',item===button));
+	$('mobileMethod').hidden=method!=='mobile';
+	$('physicalMethod').hidden=method!=='physical';
+	$('exceptionMethod').hidden=method!=='exception';
+}));
+document.querySelectorAll('[data-open-tab]').forEach(button=>button.addEventListener('click',()=>{
+	document.querySelector(`[data-tab="${button.dataset.openTab}"]`).click();
+}));
+$('loginSupervisor').onclick=async()=>{
+	try{await loginAs('supervisor');status('exceptionStatus','현장 책임자 로그인 성공 · 사전 지정 모의 절차를 확인할 수 있습니다.','good');}
+	catch(error){status('exceptionStatus',error.message,'bad');}
+};
+function physicalDecisionPayload(decision){
+	const documentType=$('physicalDocumentType').value;
+	const documentMatch=$('physicalDocumentMatch').value==='match';
+	const rosterPhotoMatch=$('physicalPhotoMatch').value==='match';
+	const liveFaceMatch=$('physicalFaceMatch').value==='match';
+	const reason=$('physicalDocumentMatch').value==='mismatch'?'document_mismatch':$('physicalFaceMatch').value==='mismatch'?'suspected_proxy':'identity_unverifiable';
+	return {exam_id:EXAM_ID,candidate_id:CANDIDATE_ID,document_type:documentType,decision,reason,document_match:documentMatch,roster_photo_match:rosterPhotoMatch,live_face_match:liveFaceMatch};
+}
+async function submitPhysicalDecision(decision){
+	if(!$('physicalDocumentType').value||$('physicalDocumentMatch').value==='none'||$('physicalPhotoMatch').value==='none'||$('physicalFaceMatch').value==='none'){
+		status('physicalStatus','신분증 종류와 세 가지 현장 대조 결과를 모두 입력해야 합니다. 확인 불가이면 해당 결과를 선택하거나 보류하세요.','warn');
+		return;
+	}
+	try{
+		await loginAs('proctor');
+		const result=await api('/api/physical-id/decision','POST',physicalDecisionPayload(decision),'proctor',$('proctorKey').value);
+		if(result.admitted){
+			demoAdmitted=true;
+			renderVerifyState();
+			status('candidateStatus','실물 신분증 모의 판정 완료 · 실제 신원인증이나 입실 자격을 부여하지 않습니다.','warn');
+		}
+		status('physicalStatus',result.message,'good');
+	}catch(error){status('physicalStatus',error.message,'bad')}
+}
+$('submitPhysical').onclick=()=>submitPhysicalDecision('approve');
+$('rejectPhysical').onclick=()=>submitPhysicalDecision('reject');
+$('holdIdentity').onclick=async()=>{
+	try{
+		await loginAs('proctor');
+		const payload={exam_id:EXAM_ID,candidate_id:CANDIDATE_ID,document_type:$('physicalDocumentType').value||'none',decision:'hold',reason:'no_phone_or_document',document_match:false,roster_photo_match:false,live_face_match:false};
+		const result=await api('/api/physical-id/decision','POST',payload,'proctor',$('proctorKey').value);
+		status('physicalStatus',result.message,'warn');
+	}catch(error){status('physicalStatus',error.message,'bad')}
+};
+function exceptionPayload(decision){
+	return {exam_id:EXAM_ID,candidate_id:CANDIDATE_ID,procedure_id:'dual_staff_application_review',decision,application_source_verified:$('exceptionApplication').checked,roster_photo_match:$('exceptionPhoto').checked,two_staff_witnesses:$('exceptionWitnesses').checked,supervisor_confirmed:$('exceptionSupervisor').checked};
+}
+async function submitExceptionDecision(decision){
+	try{
+		await loginAs('supervisor');
+		const result=await api('/api/exception/decision','POST',exceptionPayload(decision),'supervisor',$('supervisorKey').value);
+		if(result.admitted){
+			demoAdmitted=true;
+			renderVerifyState();
+			status('candidateStatus','책임자 예외 모의 판정 완료 · 실제 신원인증이나 입실 자격을 부여하지 않습니다.','warn');
+		}
+		status('exceptionStatus',result.message,decision==='hold'?'warn':decision==='reject'?'bad':'good');
+	}catch(error){status('exceptionStatus',error.message,'bad')}
+}
+$('approveException').onclick=()=>submitExceptionDecision('approve');
+$('rejectException').onclick=()=>submitExceptionDecision('reject');
+$('holdException').onclick=()=>submitExceptionDecision('hold');
+$('loginCandidate').onclick=async()=>{
+	try{await loginAs('candidate');status('candidateStatus','응시자 로그인 성공 · 본인확인 세션이 활성화되었습니다.','good');}
+	catch(error){status('candidateStatus',error.message,'bad');}
+};
+$('issue').onclick=async()=>{
+	if(demoAdmitted){status('candidateStatus','이미 입실 완료된 응시자입니다.','warn');return}
+	try{
+		await loginAs('candidate');
+		const auth=await authenticateMock(CANDIDATE_ID,$('mockAuthOutcome').value);
+		if(!auth.success){
+			currentToken='';tokenExpiresAt=0;clearInterval(countdownTimer);$('tokenPanel').hidden=true;renderVerifyState();
+			$('tokenValue').textContent='';$('tokenQr').removeAttribute('src');
+			status('candidateStatus',`모의 모바일신분증 인증 실패 · ${auth.message} · QR을 발급하지 않았습니다.`,'bad');
+			return;
+		}
+		await issueToken(CANDIDATE_ID,auth.auth_session_id);
+		status('candidateStatus','모의 모바일신분증 인증 성공 · 서버가 30초 유효 QR을 발급했습니다. 감독관의 수동 대조가 필요합니다.','good');
+	}catch(error){status('candidateStatus',error.message,'bad')}
+};
+$('loginProctor').onclick=async()=>{
+	try{await loginAs('proctor');status('proctorStatus','감독관 로그인 성공 · 입실 검증 세션이 활성화되었습니다.','good');}
+	catch(error){status('proctorStatus',error.message,'bad');}
+};
+function renderKioskRequests(requests){
+	const container=$('kioskRequests');container.replaceChildren();
+	if(!requests.length){status('kioskRequestStatus','대기 중인 키오스크 요청이 없습니다.');return}
+	for(const request of requests){
+		const card=document.createElement('article');card.className='tile';
+		const title=document.createElement('strong');title.textContent=`${request.candidate_name} · ${request.candidate_number}`;
+		const photo=document.createElement('img');photo.className='portrait';photo.src=request.photo_url;photo.alt='가상 명부 등록 사진';
+		if(request.state==='qr_ready'||request.state==='demo_qr_ready'||request.state==='expired'){
+			const state=document.createElement('p');state.className='small';
+			state.textContent=request.state==='expired'
+				?`QR 만료 · 신원확인 승인 ${request.verification_expires_in}초 남음`
+				:`DEMO QR 발급 완료 · 유효 ${request.qr_expires_in}초 · 승인 ${request.verification_expires_in}초 남음 · 실제 입실 불가`;
+			card.append(title,photo,state);
+			if(request.state==='expired'){
+				const refresh=document.createElement('button');refresh.type='button';refresh.textContent='새 30초 QR 발급';
+				refresh.onclick=async()=>{
+					refresh.disabled=true;
+					try{
+						await loginAs('proctor');
+						const response=await api('/api/kiosk/refresh-qr','POST',{kiosk_session_id:request.kiosk_session_id},'proctor',$('proctorKey').value);
+						status('kioskRequestStatus',response.message,'good');
+						await loadKioskRequests();
+					}catch(error){status('kioskRequestStatus',error.message,'bad')}
+					finally{refresh.disabled=false}
+				};
+				card.append(refresh);
+			}
+			container.append(card);
+			continue;
+		}
+		const guidance=document.createElement('p');guidance.className='small';guidance.textContent='수험번호는 조회 용도입니다. 사진·신분증 원본·현장 얼굴을 직접 대조하세요. 사진/신분증 개인정보는 저장하지 않습니다.';
+		const typeLabel=document.createElement('label');typeLabel.textContent='신분증 종류 ';
+		const type=document.createElement('select');
+		[['resident_card','주민등록증'],['driver_license','운전면허증'],['passport','여권'],['other','허용 목록 외'],['none','제시 없음']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;type.append(option)});
+		typeLabel.append(type);
+		const resultLabel=document.createElement('label');resultLabel.textContent='감독관 확인 결과 ';
+		const result=document.createElement('select');
+		[['normal','신분증·현장 얼굴 일치'],['document_mismatch','신분증 불일치'],['suspected_proxy','대리응시 의심'],['identity_unverifiable','신원확인 불가'],['no_document','신분증 없음 · 책임자 대기']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;result.append(option)});
+		resultLabel.append(result);
+		const submit=document.createElement('button');submit.type='button';submit.textContent='판정 제출';
+		submit.onclick=async()=>{
+			submit.disabled=true;
+			const reason=result.value, hold=['identity_unverifiable','no_document'].includes(reason);
+			const payload={
+				kiosk_session_id:request.kiosk_session_id,
+				document_type:reason==='no_document'?'none':type.value,
+				decision:hold?'hold':reason==='normal'?'approve':'reject',
+				reason,
+				document_match:reason==='normal'||reason==='suspected_proxy',
+				live_face_match:reason==='normal'
+			};
+			try{
+				await loginAs('proctor');
+				const response=await api('/api/kiosk/physical-review','POST',payload,'proctor',$('proctorKey').value);
+				status('kioskRequestStatus',response.message,response.state==='demo_qr_ready'?'good':response.state==='rejected'?'bad':'warn');
+				await loadKioskRequests();
+			}catch(error){status('kioskRequestStatus',error.message,'bad')}
+			finally{submit.disabled=false}
+		};
+		card.append(title,photo,guidance,typeLabel,resultLabel,submit);container.append(card);
+	}
+	status('kioskRequestStatus',`${requests.length}건의 키오스크 확인 요청이 대기 중입니다.`,'warn');
+}
+async function loadKioskRequests(){
+	try{
+		await loginAs('proctor');
+		const data=await api('/api/kiosk/requests','GET',null,'proctor',$('proctorKey').value);
+		renderKioskRequests(data.requests);
+	}catch(error){status('kioskRequestStatus',error.message,'bad')}
+}
+$('refreshKioskRequests').onclick=loadKioskRequests;
+$('approve').onclick=async()=>{
+	if(!verifiedToken){status('proctorStatus','QR을 스캔하거나 토큰을 입력하고 서버 확인을 먼저 해주세요.','bad');return}
+	if(!$('rosterMatch').checked){status('proctorStatus','감독관이 명부의 시험·응시자 정보를 확인해야 합니다.','bad');return}
+	if($('face').value==='none'){status('proctorStatus','감독관의 수동 얼굴 대조 결과를 선택해 주세요.','bad');return}
+	try{
+		await loginAs('proctor');
+		const result=await approveToken();
+		if(result.demo_admitted!==true||result.real_admission!==false)throw new Error('서버가 DEMO 전용 입실 기록을 확인하지 못했습니다.');
+		demoAdmitted=true;
+		status('proctorStatus','DEMO 모의 입실 처리 완료 · 실제 입실 기록은 생성되지 않았습니다.','warn');
+		if(selectedCandidateId===CANDIDATE_ID)status('candidateStatus','DEMO 모의 입실 완료 · 실제 입실 기록은 생성되지 않았습니다.','warn');
+		renderVerifyState();
+	}catch(error){status('proctorStatus',error.message,'bad');clearInspectedToken();renderVerifyState()}
+};
+$('startScanner').onclick=startQrScanner;
+$('stopScanner').onclick=()=>stopQrScanner();
+$('verifyToken').onclick=async()=>{
+	const token=$('manualToken').value.trim();
+	if(!token){status('scannerStatus','토큰을 입력해 주세요.','warn');return}
+	await submitRecognizedToken(token);
+};
+$('manualToken').addEventListener('keydown',event=>{if(event.key==='Enter')$('verifyToken').click()});
+$('qrImageFile').onchange=async()=>{
+	const file=$('qrImageFile').files[0];
+	if(!file)return;
+	if(file.size>15*1024*1024){
+		status('scannerStatus','이미지 파일은 15MB 이하만 처리할 수 있습니다. 더 작은 파일을 선택해 주세요.','warn');
+		$('qrImageFile').value='';
+		return;
+	}
+	if(file.type&&!file.type.startsWith('image/')){
+		status('scannerStatus','이미지 파일만 선택할 수 있습니다.','warn');
+		$('qrImageFile').value='';
+		return;
+	}
+	if(scanStream||cameraStarting)stopQrScanner('');
+	$('qrImageFile').disabled=true;
+	status('scannerStatus','이미지에서 QR 코드를 찾고 있습니다. 이미지와 토큰은 브라우저에서만 처리됩니다.');
+	let objectUrl='';
+	try{
+		const image=new Image();
+		objectUrl=URL.createObjectURL(file);
+		await new Promise((resolve,reject)=>{
+			image.onload=resolve;
+			image.onerror=()=>reject(new Error('이미지를 열 수 없습니다. 다른 파일을 선택해 주세요.'));
+			image.src=objectUrl;
+		});
+		const token=await decodeQrFromSource(image,'image');
+		if(!token){
+			status('scannerStatus','이미지에서 QR 코드를 찾지 못했습니다. 선명하고 잘리지 않은 이미지를 선택하거나 토큰을 직접 입력해 주세요.','warn');
+			return;
+		}
+		await submitRecognizedToken(token);
+	}catch(error){
+		status('scannerStatus',`이미지 QR 판독에 실패했습니다: ${error.message} 수동 토큰 입력을 이용할 수 있습니다.`,'bad');
+	}finally{
+		if(objectUrl)URL.revokeObjectURL(objectUrl);
+		$('qrImageFile').disabled=false;
+		$('qrImageFile').value='';
+	}
+};
+$('copyToken').onclick=async()=>{
+	try{await navigator.clipboard.writeText(currentToken);status('candidateStatus','일회용 토큰을 복사했습니다. 감독관에게 안전하게 전달하세요.','good')}
+	catch(error){status('candidateStatus','자동 복사를 사용할 수 없습니다. 토큰을 길게 눌러 복사해 주세요.','warn')}
+};
+$('reject').onclick=async()=>{
+	try{
+		await loginAs('proctor');
+		await api('/api/hold','POST',{exam_id:EXAM_ID,candidate_id:CANDIDATE_ID},'proctor',$('proctorKey').value);
+		status('proctorStatus','입실 보류 · 서버 기록에 저장했습니다.','warn');
+	}catch(error){status('proctorStatus',error.message,'bad')}
+};
+$('photoScenario').onchange=()=>{
+	const photos={
+		normal:{src:$('rosterPhoto').src,label:'현장 확인 대상 사진 · 정상 응시',alt:'정상 응시 시나리오의 현장 확인 대상 사진'},
+		impostor:{src:'images/impostor.png',label:'현장 확인 대상 사진 · 대리응시',alt:'대리응시 시나리오의 현장 확인 대상 사진'},
+		alternate:{src:'images/candidate2.png',label:'현장 확인 대상 사진 · 다른 가상 인물',alt:'다른 가상 인물 시나리오의 현장 확인 대상 사진'}
+	};
+	const photo=photos[$('photoScenario').value];
+	$('fieldPhoto').src=photo.src;$('fieldPhoto').alt=photo.alt;$('fieldPhotoLabel').textContent=photo.label;$('face').value='none';$('rosterMatch').checked=false;
+	status('proctorStatus','사진 시나리오가 변경되었습니다. 감독관이 직접 판정해 주세요.','warn');
+};
+$('reset').onclick=async()=>{
+	try{
+		await loginAs('proctor');
+		await api('/api/demo/reset','POST',{},'proctor',$('proctorKey').value);
+		stopQrScanner('시연 상태를 초기화했습니다.');
+		currentToken='';tokenExpiresAt=0;demoAdmitted=false;clearInterval(countdownTimer);$('tokenPanel').hidden=true;$('manualToken').value='';clearInspectedToken();$('photoScenario').value='normal';
+		$('physicalDocumentType').value='';$('physicalDocumentMatch').value='none';$('physicalPhotoMatch').value='none';$('physicalFaceMatch').value='none';
+		['exceptionApplication','exceptionPhoto','exceptionWitnesses','exceptionSupervisor'].forEach(id=>$(id).checked=false);
+		status('physicalStatus','확인 결과 미제출 · 자동 승인되지 않습니다.');
+		status('exceptionStatus','책임자 인증 후 확인할 수 있습니다.');
+		$('fieldPhoto').src='images/candidate.jpg';$('fieldPhoto').alt='정상 응시 시나리오의 현장 확인 대상 사진';$('fieldPhotoLabel').textContent='현장 확인 대상 사진 · 정상 응시';
+		status('candidateStatus','시연 상태 초기화 완료 · 서버 감사 기록은 보존됩니다.','good');status('proctorStatus','현장 확인 대기 중');renderVerifyState();
+	}catch(error){status('candidateStatus',error.message,'bad')}
+};
+async function runSecurityTest(test){
+	if(test==='offline'){status('securityStatus','네트워크가 끊기면 서버 확인을 할 수 없으므로 입실을 승인하지 않습니다.','warn');return}
+	if(!$('proctorKey').value){status('securityStatus','서버 시작 로그의 감독관 키를 입력해 주세요.','bad');return}
+	try{
+		await loginAs('proctor');
+		await api('/api/demo/reset','POST',{},'proctor',$('proctorKey').value);
+		currentToken='';demoAdmitted=false;clearInspectedToken();renderVerifyState();
+		if(test==='expired'){
+			const issued=await issueMockToken(CANDIDATE_ID);
+			status('securityStatus','토큰 발급됨 · 30초 대기 후 서버에 만료된 토큰을 제출합니다.','warn');
+			window.setTimeout(async()=>{
+				try{await approveToken(issued.token,CANDIDATE_ID,true);status('securityStatus','예상과 달리 승인되었습니다.','bad')}
+				catch(error){status('securityStatus',`만료 토큰 차단: ${error.message}`,'bad')}
+			},30050);
+			return;
+		}
+		if(test==='other'){
+			const issued=await issueMockToken(CANDIDATE_ID);
+			try{await approveToken(issued.token,'candidate-002',true);status('securityStatus','예상과 달리 타인 토큰이 승인되었습니다.','bad')}
+			catch(error){status('securityStatus',`타인 응시자 토큰 차단: ${error.message}`,'bad')}
+			return;
+		}
+		const issued=await issueMockToken('candidate-002');
+		if(test==='replay'){
+			try{await approveToken(issued.token,'candidate-002',false);status('securityStatus','예상과 달리 불일치 토큰이 승인되었습니다.','bad');return}
+			catch(error){if(!error.message.includes('일치하지')){status('securityStatus',error.message,'bad');return}}
+			try{await approveToken(issued.token,'candidate-002',true);status('securityStatus','예상과 달리 재사용 토큰이 승인되었습니다.','bad')}
+			catch(error){status('securityStatus',`재사용 차단: ${error.message}`,'bad')}
+			return;
+		}
+		if(test==='duplicate'){
+			try{await approveToken(issued.token,'candidate-002',true)}catch(error){status('securityStatus',error.message,'bad');return}
+			try{await approveToken(issued.token,'candidate-002',true);status('securityStatus','예상과 달리 중복 요청이 승인되었습니다.','bad')}
+			catch(error){status('securityStatus',`중복 입실 차단: ${error.message}`,'bad')}
+		}
+	}catch(error){status('securityStatus',error.message,'bad')}
+}
+document.querySelectorAll('[data-test]').forEach(button=>button.addEventListener('click',()=>runSecurityTest(button.dataset.test)));
+function renderEvents(events){
+	const body=$('logs');body.replaceChildren();
+	if(!events.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=7;cell.textContent='기록 없음';row.append(cell);body.append(row);return}
+	for(const item of events){
+		const row=document.createElement('tr');
+		[item.occurred_at,item.event,`${item.outcome}${item.details?` · ${item.details}`:''}`,item.actor,item.domain==='demo'?'DEMO':'운영',item.auth_path||'-',item.candidate_id||'-'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell)});
+		body.append(row);
+	}
+}
+$('loginAdmin').onclick=async()=>{
+	try{await loginAs('admin');$('adminKioskTestPanel').hidden=false;status('adminStatus','관리자 로그인 성공 · 서버 기록 및 테스트 권한이 활성화되었습니다.','good');}
+	catch(error){status('adminStatus',error.message,'bad');}
+};
+function dashboardUrl(){
+	const params=new URLSearchParams();
+	for(const [key,id] of [['domain','filterDomain'],['event','filterEvent'],['auth_path','filterAuthPath'],['outcome','filterOutcome'],['since','filterSince'],['until','filterUntil']]){
+		const value=$(id).value.trim();
+		if(value)params.set(key,value);
+	}
+	const query=params.toString();
+	return query?`/api/dashboard?${query}`:'/api/dashboard';
+}
+$('loadDashboard').onclick=async()=>{
+	try{
+		await loginAs('admin');
+		const data=await api(dashboardUrl(),'GET',null,'admin',$('adminKey').value);
+		$('adminKioskTestPanel').hidden=false;
+		$('countCandidates').textContent=`${data.candidate_count}명`;$('countAdmitted').textContent=`${data.admitted_count}명`;$('countBlocked').textContent=`${data.blocked_count}건`;
+		renderEvents(data.events);status('adminStatus','SQLite 서버 기록을 불러왔습니다.','good');
+	}catch(error){status('adminStatus',error.message,'bad')}
+};
+$('runKioskSelfTest').onclick=async()=>{
+	const number=$('kioskTestCandidateNumber').value.replace(/[^0-9]/g,'');
+	if(!number){status('adminKioskTestStatus','가상 수험번호를 입력해 주세요.','bad');return}
+	$('runKioskSelfTest').disabled=true;
+	let kioskSessionId='';
+	try{
+		const created=await api('/api/kiosk/session','POST',{});
+		kioskSessionId=created.kiosk_session_id;
+		await api('/api/kiosk/candidate','POST',{kiosk_session_id:kioskSessionId,exam_id:EXAM_ID,candidate_number:number,mode:'self_demo'});
+		const result=await api('/api/kiosk/self-auth','POST',{
+			kiosk_session_id:kioskSessionId,
+			demo_outcome:$('kioskTestOutcome').value,
+			demo_simulation:true,
+		},'admin',$('adminKey').value);
+		status('adminKioskTestStatus',`${result.message} · DEMO 테스트 결과만 생성했습니다.`,'good');
+		const dashboard=await api('/api/dashboard','GET',null,'admin',$('adminKey').value);
+		renderEvents(dashboard.events);
+	}catch(error){
+		status('adminKioskTestStatus',error.message,'bad');
+	}
+	finally{
+		if(kioskSessionId){
+			try{await api('/api/kiosk/end','POST',{kiosk_session_id:kioskSessionId})}
+			catch(error){status('adminKioskTestStatus','테스트 세션 정리를 완료하지 못했습니다. 관리자 진단 화면을 확인하세요.','bad')}
+		}
+		$('runKioskSelfTest').disabled=false;
+	}
+};
+$('face').onchange=()=>renderVerifyState();
+renderVerifyState();
+if(!qrDecoderReady){
+	status('scannerStatus','로컬 QR 판독기를 불러오지 못했습니다. 카메라 스캔은 시작하지 않습니다. 페이지를 새로고침한 뒤에도 계속되면 서버를 재시작하고, QR 이미지 업로드 또는 수동 토큰 입력을 이용해 주세요.','bad');
+}
+</script>
+</body>
+</html>
+curl -i http://127.0.0.1:8000/

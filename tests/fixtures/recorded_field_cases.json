@@ -1,0 +1,13 @@
+{
+  "note": "Scores and outcomes only. No images, no embeddings, no personal data.",
+  "pad_misclassifications_human_antispoof_3_3_6": [
+    {"scenario": "phone wallpaper of the genuine candidate", "score": 0.69, "model_status": "live_candidate", "truth": "presentation_attack"},
+    {"scenario": "gallery photo of the genuine candidate on a phone", "score": 0.49, "model_status": "spoof_suspected", "truth": "presentation_attack"},
+    {"scenario": "gallery photo of another person on a phone", "score": 0.88, "model_status": "live_candidate", "truth": "presentation_attack"}
+  ],
+  "face_similarity_percent_human_3_3_6": {
+    "same_person_live_repeats": [45, 47, 53, 50, 51],
+    "same_person_phone_photo": [80, 64],
+    "other_person_phone_photo": [41]
+  }
+}

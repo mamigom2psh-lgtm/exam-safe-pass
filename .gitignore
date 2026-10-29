@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+node_modules/
+exam_safe_pass.sqlite3
+exam_safe_pass.sqlite3-shm
+exam_safe_pass.sqlite3-wal
+
+# Face photos and biometric material must never be committed.
+images/
+*.jpg
+*.jpeg
+*.png
+!vendor/**/*.png
+*.embedding
+*.npy
+*.sqlite3
+*.sqlite3-*
+
+# Local safety backups (kept on disk, not uploaded)
+*_pre_*_backup.*
+*_backup.html
+index_old.html
+index_v2_backup.html
+backups_pre_hardening/
+test_backups/

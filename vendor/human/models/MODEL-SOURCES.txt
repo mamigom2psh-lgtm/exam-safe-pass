@@ -1,0 +1,25 @@
+Human Antispoof PoC model
+
+Runtime: @vladmandic/human 3.3.6 (already pinned in package-lock.json)
+Model: Human Anti-Spoofing / Real-of-Fake, 128x128 RGB input, single score output
+Model source: https://github.com/vladmandic/human-models
+Pinned source revision: bc66dc53bac03c96d35a7e6daaf717e72f3985f5
+Revision date: 2023-06-12
+Model source license: MIT (LICENSE in this directory)
+Upstream model credit: https://www.kaggle.com/anku420/fake-face-detection
+
+SHA-256:
+  antispoof.bin  4490fecb2becdb6869edc7e60f5e59962be013a8def8719b1373afb0f905c094
+  antispoof.json 7fd698ae1cebabbcad79d3b8b448587b0365eb7911987418231bdcf36583112a
+
+The Human model documentation lists the model and credits the Kaggle
+"Real-of-Fake" model. The repository MIT license is included with the weights.
+The original Kaggle artifact's independent license, training-data provenance,
+calibration, and attack-subtype performance could not be independently
+confirmed. Treat this as a local, informational proof of concept only; obtain
+rights confirmation and independently validate the model before any deployment.
+
+The application uses a 0.50 score threshold only as a demo cutoff. This is not a
+calibrated or validated security threshold. Inference runs in the kiosk browser;
+frames and model scores are not uploaded or persisted. A model load or output
+failure is a failed check, never a successful check.

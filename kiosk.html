@@ -1,0 +1,1190 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#142f55">
+<title>안심패스 공용 인증 키오스크</title>
+<style>
+:root{font-family:system-ui,'Malgun Gothic',sans-serif;color:#142b49;background:#eef3f9}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column}
+[hidden]{display:none!important}
+header{background:#163b70;color:#fff;padding:22px max(20px,calc((100vw - 900px)/2))}
+h1{font-size:clamp(24px,4vw,36px);margin:0}
+header p{margin:8px 0 0;color:#e2edfb;font-size:18px}
+main{width:min(900px,100%);margin:28px auto;padding:0 18px;flex:1}
+.notice{background:#fff4d7;border:2px solid #d5a82f;border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:17px;font-weight:750;line-height:1.55}
+.card{background:#fff;border-radius:20px;padding:clamp(22px,5vw,48px);box-shadow:0 8px 30px #1b3c6912}
+.screen{display:none}.screen.active{display:block}
+h2{margin:0 0 16px;font-size:clamp(28px,5vw,40px)}
+h3{font-size:23px}
+.lead{color:#40566f;line-height:1.7;font-size:20px}
+.step-count{font-weight:750;color:#245baa;font-size:17px;margin:0 0 12px}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:28px 0 4px}
+button{display:inline-flex;align-items:center;justify-content:center;min-height:64px;padding:16px 22px;border:0;border-radius:12px;background:#174f9d;color:#fff;font-size:20px;font-weight:800;text-align:center;cursor:pointer}
+button:hover{background:#103f82}
+button:focus-visible,input:focus-visible{outline:4px solid #e6a700;outline-offset:3px}
+button:disabled{opacity:.55;cursor:wait}
+.choices button{min-height:170px;flex-direction:column;gap:12px;font-size:25px}
+.choices button span{font-size:17px;font-weight:550;line-height:1.45}
+.secondary{background:#475e78}.danger{background:#8c2635}
+.row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:22px 0}
+form{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin-top:24px}
+label{display:block;font-size:19px;font-weight:750;margin-bottom:8px}
+input{width:min(100%,440px);font-size:26px;padding:16px;border:2px solid #71849a;border-radius:10px}
+.status{padding:18px;border-radius:12px;background:#eaf2ff;color:#15447d;font-size:19px;font-weight:700;line-height:1.55;margin-top:20px}
+.status.good{background:#e5f6eb;color:#145c35}.status.bad{background:#ffe8ea;color:#8f1f2c}.status.warn{background:#fff3da;color:#684200}
+.person{background:#f1f5fa;padding:20px;border-radius:12px;font-size:21px;font-weight:700;line-height:1.6;margin:20px 0}
+.camera-preview{display:block;width:min(100%,520px);max-height:390px;aspect-ratio:4/3;object-fit:cover;background:#111;border-radius:12px;margin:18px 0}
+.qr{width:min(100%,360px);height:auto;padding:10px;border:1px solid #bdcad9;border-radius:12px;background:#fff}
+.qr-wrap{display:grid;justify-items:center;gap:16px;margin:24px 0;text-align:center}
+.qr-wrap strong{font-size:22px}
+.countdown{font-size:24px;font-weight:800;color:#142b49}
+.small{font-size:17px;color:#40566f;line-height:1.6}
+.roster-photo{display:block;width:min(100%,240px);max-height:300px;object-fit:cover;border:1px solid #bdcad9;border-radius:12px;background:#fff;margin:18px 0}
+.ticket-actions{display:flex;gap:14px;flex-wrap:wrap;margin:20px 0}
+.ticket-layout{display:grid;justify-items:center;gap:10px;text-align:center;background:#fff;color:#000;padding:20px;border:1px solid #bbb}
+.ticket-layout h2,.ticket-layout h3,.ticket-layout p{color:#000;margin:4px}
+.ticket-layout img{width:min(100%,320px);height:auto;image-rendering:pixelated}
+.ticket-meta{width:100%;border-collapse:collapse;text-align:left;font-size:16px}
+.ticket-meta th,.ticket-meta td{border-bottom:1px solid #777;padding:8px}
+.ticket-demo{font-size:24px;font-weight:900;border:3px solid #000;padding:10px}
+#ticketPrintArea{background:#fff;color:#000}
+.bottom-actions{width:min(900px,100%);margin:0 auto;padding:18px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.bottom-actions button{min-height:54px;font-size:17px}
+footer{text-align:center;color:#40566f;font-size:15px;padding:0 18px 20px}
+@media(max-width:650px){.choices{grid-template-columns:1fr}.choices button{min-height:115px}header{padding:20px}main{margin:18px auto}.bottom-actions{flex-direction:column}.bottom-actions button{width:100%}form button{width:100%}}
+@page{size:A4;margin:12mm}
+@page receipt{size:80mm auto;margin:4mm}
+.ticket-demo-foot{margin-top:8px}
+@media print{
+	body[data-print-size="receipt"] #ticketPrintArea{page:receipt;width:72mm;margin:0 auto;padding:0;font-size:10pt}
+	body[data-print-size="receipt"] .ticket-layout img{width:58mm}
+	body[data-print-size="receipt"] .ticket-demo{font-size:13pt;border-width:2px;padding:6px}
+	body[data-print-size="receipt"] .ticket-meta{font-size:9pt}
+	body[data-print-size="receipt"] .ticket-layout h2{font-size:14pt}
+	body[data-print-size="a4"] #ticketPrintArea{page:auto;width:180mm;margin:0 auto}
+	body[data-print-size="a4"] .ticket-layout img{width:90mm}
+	body[data-print-size="a4"] .ticket-demo{font-size:26pt;border-width:4px;padding:14px}
+	body[data-print-size="a4"] .ticket-meta{font-size:14pt}
+	body *{visibility:hidden!important}
+	body #ticketPrintArea,body #ticketPrintArea *{visibility:visible!important}
+	body #ticketPrintArea{display:block!important;position:absolute;inset:0 auto auto 0}
+	.ticket-layout{border:0;padding:0;break-inside:avoid;page-break-inside:avoid}
+	.ticket-layout img{max-width:100%}
+	button,select,header,footer,.bottom-actions{display:none!important}
+}
+body.large-text{font-size:125%}
+body.large-text .lead,body.large-text .status,body.large-text .small,body.large-text label,body.large-text button,body.large-text dd,body.large-text dt{font-size:1.3em}
+body.high-contrast{background:#000;color:#fff}
+body.high-contrast .card,body.high-contrast .person,body.high-contrast .status,body.high-contrast .notice{background:#000;color:#fff;border:3px solid #fff}
+body.high-contrast .lead,body.high-contrast .small,body.high-contrast h2,body.high-contrast h3,body.high-contrast .step-count,body.high-contrast label{color:#fff}
+body.high-contrast button{background:#ffd400;color:#000;border:3px solid #fff}
+body.high-contrast input,body.high-contrast select{background:#000;color:#fff;border:3px solid #fff}
+.a11y-bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.a11y-bar button{min-height:48px;padding:8px 16px;font-size:18px;background:#fff;color:#142f55}
+.skip-link{position:absolute;left:-999px}.skip-link:focus{left:12px;top:8px;background:#fff;color:#000;padding:10px;z-index:10}
+@media print{.a11y-bar,.skip-link{display:none!important}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#mainContent">본문 바로가기</a>
+<header>
+<h1>시험장 인증 키오스크</h1>
+<p>모의 서비스 · 실제 신원인증이나 입실 승인이 아닙니다.</p>
+<div class="a11y-bar" role="group" aria-label="화면 설정">
+<button id="toggleLargeText" type="button" aria-pressed="false">큰 글씨</button>
+<button id="toggleHighContrast" type="button" aria-pressed="false">고대비</button>
+</div>
+</header>
+<main id="mainContent" tabindex="-1">
+<div class="notice">공모전 시제품 · 모바일신분증은 모의 인증만 제공하며 공식 기관 연동은 미구현입니다. 화면 결과와 QR은 실제 신원확인 또는 실제 입실 허가가 아닙니다.</div>
+<div class="card">
+<section class="screen active" id="homeScreen" aria-labelledby="homeTitle">
+<h2 id="homeTitle" tabindex="-1">인증 방법을 선택하세요</h2>
+<p class="lead">원하는 방법을 선택해 안내에 따라 진행해 주세요.</p>
+<div class="choices">
+<button id="selfModeButton" type="button">셀프 인증 시작<span>수험번호와 카메라를 확인하는 DEMO 절차</span></button>
+<button id="proctorModeButton" type="button">감독관 인증<span>감독관이 신분증과 응시 정보를 확인합니다</span></button>
+</div>
+<div class="status" id="homeStatus" aria-live="polite" aria-atomic="true"></div>
+</section>
+
+<section class="screen" id="numberScreen" aria-labelledby="numberTitle">
+<p class="step-count">1단계</p>
+<h2 id="numberTitle" tabindex="-1">수험번호 조회</h2>
+<p class="lead" id="modeInstructions"></p>
+<form id="candidateForm">
+<div><label for="candidateNumber">수험번호</label><input id="candidateNumber" name="candidateNumber" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="예: 2026-0012" required></div>
+<button id="lookupButton" type="submit">조회하기</button>
+</form>
+<div class="status" id="lookupStatus" aria-live="polite" aria-atomic="true"></div>
+</section>
+
+<section class="screen" id="selfCameraScreen" aria-labelledby="cameraTitle">
+<p class="step-count">2단계</p>
+<h2 id="cameraTitle" tabindex="-1">얼굴 유사도 및 위조 탐지 PoC (DEMO)</h2>
+<p class="lead">가상 등록 사진과 약 2.5초 동안 수집한 카메라 8개 프레임을 이 브라우저에서 비교하고, 프레임별 안티스푸핑 모델 점수를 표시합니다. 결과는 연구용 참고값이며 실제 신원확인이나 운영 인증이 아닙니다.</p>
+<img id="registeredFacePhoto" class="roster-photo" alt="가상 응시자 등록 사진" hidden>
+<video id="facePreview" class="camera-preview" autoplay muted playsinline aria-label="카메라 미리보기" hidden></video>
+<div class="row"><button id="startCamera" type="button">카메라 켜기</button><button id="cameraContinue" type="button" hidden>촬영 후 참고 분석</button></div>
+<div class="status" id="cameraStatus" aria-live="polite" aria-atomic="true">계속하려면 카메라를 켜 주세요. 비교가 완료되기 전에는 결과 단계로 진행되지 않습니다.</div>
+<p class="small">사용 기술: Human 3.3.6 FaceRes 얼굴 비교 및 Human Antispoof 모델. 프레임 기록은 평균·통합 판정에 사용하지 않으며, 사진·화면 재생 공격에 대한 성능은 검증되지 않았습니다.</p>
+</section>
+
+<section class="screen" id="selfResultScreen" aria-labelledby="resultTitle">
+<p class="step-count">3단계</p>
+<h2 id="resultTitle" tabindex="-1">참고용 얼굴 유사도 분석 결과 (DEMO) · 얼굴 비교 결과</h2>
+<div class="status" id="faceComparisonResult" aria-live="polite" aria-atomic="true"></div>
+<div class="status warn" id="livenessResult" aria-live="polite" aria-atomic="true">실재성 모델 검사 대기 중 · 결과 화면은 DEMO와 분리됩니다.</div>
+<details class="small" id="antiSpoofDiagnostics">
+<summary>개발자 진단 · DEMO 전용</summary>
+<p>모델 자산과 추론 상태만 표시합니다. 얼굴 이미지, 특징값, 응시자 정보는 표시하거나 저장하지 않습니다.</p>
+<dl>
+<dt>antispoof.json</dt><dd id="diagManifest">확인 전</dd>
+<dt>antispoof.bin</dt><dd id="diagWeights">확인 전</dd>
+<dt>faceModel.load()</dt><dd id="diagLoad">실행 전</dd>
+<dt>안티스푸핑 모델 준비</dt><dd id="diagModel">확인 전</dd>
+<dt>카메라 프레임 전달</dt><dd id="diagFrame">전달 전</dd>
+<dt>다중 프레임 관찰</dt><dd id="diagMultiFrame">검사 전</dd>
+<dt>검출 얼굴 수</dt><dd id="diagFaceCount">확인 전</dd>
+<dt>등록 사진 입력 / 얼굴</dt><dd id="diagReferenceInput">확인 전</dd>
+<dt>등록 사진 얼굴 box</dt><dd id="diagReferenceBox">확인 전</dd>
+<dt>등록 사진 FaceRes</dt><dd id="diagReferenceEmbedding">확인 전</dd>
+<dt>촬영 프레임 입력 / 얼굴</dt><dd id="diagLiveInput">확인 전</dd>
+<dt>촬영 프레임 얼굴 box</dt><dd id="diagLiveBox">확인 전</dd>
+<dt>촬영 프레임 FaceRes</dt><dd id="diagLiveEmbedding">확인 전</dd>
+<dt>임베딩 전처리</dt><dd id="diagAlign">mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)</dd>
+<dt>등록 사진 재검출 자기 비교</dt><dd id="diagSelf">확인 전</dd>
+<dt>프레임별 거리 분포 (등록 vs 8프레임)</dt><dd id="diagDist">확인 전</dd>
+<dt>세션 수집 분포 (메모리 전용)</dt><dd id="diagSession">기록 없음</dd>
+<dt>비교 raw distance</dt><dd id="diagDistance">확인 전</dd>
+<dt>유사도 변환 공식</dt><dd id="diagFormula">확인 전</dd>
+<dt>모델 점수 / 임계값</dt><dd id="diagScore">점수 없음 / 0.50</dd>
+<dt>PoC 판정</dt><dd id="diagVerdict">검사 전</dd>
+</dl>
+<div class="row"><select id="distLabel" aria-label="분포 분류"><option value="same">동일인</option><option value="other">타인</option></select><button id="recordDist" class="secondary" type="button" disabled>이번 거리 기록</button></div>
+<p>수치만 이 페이지 메모리에 보관하며 새로고침하면 사라집니다. 기록은 분포 확인용이며 임계값이나 일치 판정에 사용하지 않습니다.</p>
+<table id="multiFrameTable" hidden>
+<caption>프레임별 로컬 관찰 기록 · 판정 아님</caption>
+<thead><tr><th scope="col">프레임</th><th scope="col">경과 ms</th><th scope="col">얼굴</th><th scope="col">점수</th><th scope="col">상태</th></tr></thead>
+<tbody id="multiFrameRows"></tbody>
+</table>
+</details>
+<p class="small">얼굴 유사도와 모델 점수는 브라우저에서만 처리되며 서버에 전송·저장되지 않습니다. 서버는 실제 본인 여부나 실재성을 검증하지 않습니다. 출력은 별도 DEMO 모의 절차와 분리된 PoC 결과이며 실제 입실 기록 또는 운영 QR 발급 근거가 아닙니다.</p>
+<div class="row"><button id="retryFaceCapture" class="secondary" type="button">다시 촬영</button><button id="completeSelfDemo" type="button" hidden>DEMO 모의 성공으로 진행</button><button id="faceHelp" class="secondary" type="button">감독관 확인 요청</button></div>
+<div class="status" id="selfResultStatus" aria-live="polite" aria-atomic="true"></div>
+</section>
+
+<section class="screen" id="ticketChoiceScreen" aria-labelledby="ticketChoiceTitle">
+<p class="step-count">4단계 · DEMO</p>
+<h2 id="ticketChoiceTitle" tabindex="-1">QR 입실권 방식 선택</h2>
+<div class="status warn">공모전 시제품 · 실제 입실 불가. 선택한 방식에 따라 서버가 DEMO 전용 일회 QR을 발급합니다.</div>
+<div class="ticket-actions">
+<button id="showQrChoice" type="button">화면으로 QR 보기</button>
+<button id="printQrChoice" type="button">QR 입실권 출력</button>
+</div>
+<div class="status" id="ticketChoiceStatus" aria-live="polite" aria-atomic="true"></div>
+</section>
+
+<section class="screen" id="proctorWaitScreen" aria-labelledby="proctorTitle">
+<h2 id="proctorTitle" tabindex="-1">감독관 확인 대기</h2>
+<p class="lead">화면을 유지하고 감독관에게 확인을 요청하세요. 서버에서 권한이 확인된 감독관만 신원확인을 완료할 수 있습니다.</p>
+<div class="person" id="candidateInfo"></div>
+<div class="status warn" id="proctorStatus" aria-live="polite" aria-atomic="true">수험번호 조회만으로 인증되지 않습니다.</div>
+</section>
+
+<section class="screen" id="qrScreen" aria-labelledby="qrTitle">
+<p class="step-count" id="qrStepCount"></p>
+<h2 id="qrTitle" tabindex="-1">QR 확인</h2>
+<div class="status warn" id="qrNotice" aria-live="polite" aria-atomic="true" hidden></div>
+<div id="qrPanel" class="qr-wrap" hidden>
+<strong id="qrLabel"></strong>
+<img id="entryQr" class="qr" alt="" hidden>
+<strong id="qrCountdown" class="countdown" aria-live="off"></strong>
+<p class="lead" id="qrGuidance"></p>
+<div class="ticket-actions" id="ticketPrintActions" hidden>
+<label for="paperSize">인쇄 용지</label>
+<select id="paperSize"><option value="a4">A4</option><option value="receipt">영수증형 80mm</option></select>
+<button id="printTicketButton" type="button">QR 입실권 출력 · PDF 저장</button>
+</div>
+<button id="nextDemoEntry" type="button" hidden>모의 입실 승인으로 진행</button>
+</div>
+<button id="reissueSelfQr" type="button" hidden>QR 재발급</button>
+<div class="status" id="qrStatus" aria-live="polite" aria-atomic="true" hidden></div>
+</section>
+
+<section class="screen" id="demoEntryScreen" aria-labelledby="demoEntryTitle">
+<p class="step-count">5단계</p>
+<h2 id="demoEntryTitle" tabindex="-1">모의 입실 승인</h2>
+<div class="status warn">DEMO QR을 사용한 모의 절차입니다. 실제 입실 승인이나 실제 입실 기록은 생성되지 않습니다.</div>
+<button id="approveDemoEntry" type="button">DEMO 모의 입실 처리</button>
+<div class="status" id="demoEntryStatus" aria-live="polite" aria-atomic="true"></div>
+</section>
+
+<section class="screen" id="helpScreen" aria-labelledby="helpTitle">
+<h2 id="helpTitle" tabindex="-1">관리자 도움 요청</h2>
+<p class="lead">현장 직원에게 도움 요청을 전달합니다. 요청만으로 입실이 승인되지 않습니다.</p>
+<div class="status" id="helpStatus" aria-live="polite" aria-atomic="true"></div>
+</section>
+</div>
+</main>
+<section id="ticketPrintArea" hidden aria-label="인쇄용 QR 입실권">
+<div class="ticket-layout" id="ticketLayout" data-paper-size="a4">
+<h2>QR 입실권</h2>
+<div class="ticket-demo">공모전 시제품 · 실제 입실 불가</div>
+<table class="ticket-meta"><tbody>
+<tr><th>시험명</th><td id="ticketExamName"></td></tr>
+<tr><th>응시자</th><td id="ticketCandidateName"></td></tr>
+<tr><th>수험번호</th><td id="ticketCandidateNumber"></td></tr>
+<tr><th>발급 시각</th><td id="ticketIssuedAt"></td></tr>
+<tr><th>만료 시각</th><td id="ticketExpiresAt"></td></tr>
+<tr><th>구분</th><td>DEMO 전용 · 실제 입실 불가</td></tr>
+</tbody></table>
+<img id="ticketQrImage" alt="개인정보가 포함되지 않은 DEMO 일회 QR 코드">
+<p>이 QR은 모의 확인용이며 실제 입실 승인에 사용할 수 없습니다.</p>
+<div class="ticket-demo ticket-demo-foot" id="ticketDemoFoot">공모전 시제품 · 실제 입실 불가</div>
+</div>
+</section>
+<div class="bottom-actions" aria-label="화면 하단 기능">
+<button id="helpButton" class="secondary" type="button">관리자 도움 요청</button>
+<button id="endSession" class="danger" type="button">세션 종료</button>
+</div>
+<footer>DEMO QR은 실제 입실에 사용할 수 없습니다.</footer>
+<script src="/vendor/human/human.bundle.js"></script>
+<script src="/face_similarity.js"></script>
+<script>
+const EXAM_ID='exam-demo-2026', SESSION_KEY='exam-safe-kiosk-session', IDLE_RESET_MS=180000;
+const MULTI_FRAME_COUNT=8, MULTI_FRAME_INTERVAL_MS=350, ANALYSIS_TIMEOUT_MS=15000;
+const $=id=>document.getElementById(id);
+let kioskSessionId='', statusTimer=0, idleTimer=0, countdownTimer=0;
+let currentMode='self_demo', cameraStream=null, cameraRequestId=0, selfDemoToken='';
+let currentScreenId='';
+let candidateRecord=null, faceModel=null, faceModelPromise=null, capturedFaceResult=null, capturedLivenessResult=null, analysisRequestId=0;
+const ANTISPOOF_MODEL_BASE='/vendor/human/models/';
+const ANTISPOOF_THRESHOLD=0.5;
+const antiSpoofDiagnostics={
+	manifest:'확인 전',
+	weights:'확인 전',
+	load:'실행 전',
+	model:'확인 전',
+	frame:'전달 전',
+	multiFrame:'검사 전',
+	faceCount:'확인 전',
+	referenceInput:'확인 전',
+	referenceBox:'확인 전',
+	referenceEmbedding:'확인 전',
+	liveInput:'확인 전',
+	liveBox:'확인 전',
+	liveEmbedding:'확인 전',
+	distance:'확인 전',
+	align:'mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)',
+	selfCompare:'확인 전',
+	distribution:'확인 전',
+	formula:'확인 전',
+	score:`점수 없음 / ${ANTISPOOF_THRESHOLD.toFixed(2)}`,
+	verdict:'검사 전',
+};
+
+function setStatus(id,message,type=''){
+	const element=$(id);
+	element.textContent=message;
+	element.className=`status ${type}`;
+}
+let lastDistance;
+const sessionDistances={same:[],other:[]};
+function formatSessionDistances(){
+	const stats=ExamFaceSimilarity.summarizeScoreDistribution(sessionDistances);
+	const part=(name,item)=>item.count?`${name} ${item.count}개 최소 ${item.min.toFixed(2)}/중앙 ${item.median.toFixed(2)}/최대 ${item.max.toFixed(2)}`:`${name} 기록 없음`;
+	return `${part('동일인',stats.same)} · ${part('타인',stats.other)}`;
+}
+function updateAntiSpoofDiagnostics(changes){
+	Object.assign(antiSpoofDiagnostics,changes);
+	for(const [key,id] of Object.entries({
+		manifest:'diagManifest',
+		weights:'diagWeights',
+		load:'diagLoad',
+		model:'diagModel',
+		frame:'diagFrame',
+		multiFrame:'diagMultiFrame',
+		faceCount:'diagFaceCount',
+		referenceInput:'diagReferenceInput',
+		referenceBox:'diagReferenceBox',
+		referenceEmbedding:'diagReferenceEmbedding',
+		liveInput:'diagLiveInput',
+		liveBox:'diagLiveBox',
+		liveEmbedding:'diagLiveEmbedding',
+		distance:'diagDistance',
+		align:'diagAlign',
+		selfCompare:'diagSelf',
+		distribution:'diagDist',
+		formula:'diagFormula',
+		score:'diagScore',
+		verdict:'diagVerdict',
+	})){
+		$(id).textContent=antiSpoofDiagnostics[key];
+	}
+}
+function formatFaceBox(box){
+	if(!Array.isArray(box)||box.length<4||box.some(value=>!Number.isFinite(value)))return '없음';
+	return `[x=${box[0].toFixed(1)}, y=${box[1].toFixed(1)}, w=${box[2].toFixed(1)}, h=${box[3].toFixed(1)}]`;
+}
+function formatFaceDiagnostics(face,inputWidth,inputHeight){
+	const info=ExamFaceSimilarity.inspectFace(face,inputWidth,inputHeight);
+	const input=Number.isFinite(info.inputWidth)&&Number.isFinite(info.inputHeight)
+		?`${info.inputWidth}x${info.inputHeight}`:'확인 불가';
+	const embedding=info.embeddingAvailable
+		?`${info.embeddingValid?'유효':'무효'} · ${info.embeddingDimension}차원`
+		:'생성되지 않음';
+	return {
+		input,
+		box:info.detected?formatFaceBox(info.box):'얼굴 미검출',
+		embedding,
+	};
+}
+function renderMultiFrameRows(rows){
+	const table=$('multiFrameTable'), body=$('multiFrameRows');
+	body.replaceChildren();
+	if(!rows.length){
+		table.hidden=true;
+		return;
+	}
+	for(const row of rows){
+		const tr=document.createElement('tr');
+		for(const value of [row.index,row.elapsedMs,row.faceCount,row.score,row.status]){
+			const cell=document.createElement('td');
+			cell.textContent=String(value);
+			tr.appendChild(cell);
+		}
+		body.appendChild(tr);
+	}
+	table.hidden=false;
+}
+async function awaitAnalysisStep(promise, remainingMs){
+	if(remainingMs<=0)throw new Error('분석 시간 초과');
+	let timer;
+	try{
+		return await Promise.race([
+			promise,
+			new Promise((_,reject)=>{
+				timer=window.setTimeout(()=>reject(new Error('분석 시간 초과')),remainingMs);
+			}),
+		]);
+	}finally{
+		window.clearTimeout(timer);
+	}
+}
+async function checkAntiSpoofFiles(){
+	updateAntiSpoofDiagnostics({
+		manifest:'요청 중',
+		weights:'manifest 확인 대기 중',
+	});
+	const manifestUrl=new URL('antispoof.json',new URL(ANTISPOOF_MODEL_BASE,location.origin));
+	let manifestResponse;
+	try{
+		manifestResponse=await fetch(manifestUrl,{cache:'no-store',credentials:'same-origin'});
+		if(!manifestResponse.ok)throw new Error(`HTTP ${manifestResponse.status}`);
+	}catch(error){
+		const reason=error instanceof Error?error.message:'네트워크 오류';
+		updateAntiSpoofDiagnostics({
+			manifest:`실패 · ${reason}`,
+			weights:'manifest 로드 실패로 확인 불가',
+		});
+		throw new Error(`antispoof.json 로드 실패: ${reason}`);
+	}
+	let manifest;
+	try{
+		manifest=await manifestResponse.json();
+	}catch(error){
+		const reason=error instanceof Error?error.message:'JSON 형식 오류';
+		updateAntiSpoofDiagnostics({
+			manifest:`실패 · JSON 파싱 오류 (${reason})`,
+			weights:'manifest 파싱 실패로 확인 불가',
+		});
+		throw new Error(`antispoof.json JSON 파싱 실패: ${reason}`);
+	}
+	updateAntiSpoofDiagnostics({manifest:`HTTP ${manifestResponse.status} · JSON 파싱 성공`});
+	const weightPaths=manifest?.weightsManifest?.flatMap(group=>group.paths||[]);
+	if(!Array.isArray(weightPaths)||weightPaths.length===0||weightPaths.some(path=>typeof path!=='string')){
+		updateAntiSpoofDiagnostics({weights:'실패 · manifest에 유효한 가중치 경로가 없음'});
+		throw new Error('antispoof.json에 가중치 파일 경로가 없습니다.');
+	}
+	const weightResults=await Promise.all(weightPaths.map(async path=>{
+		const weightUrl=new URL(path,new URL(ANTISPOOF_MODEL_BASE,location.origin));
+		if(weightUrl.origin!==location.origin||!weightUrl.pathname.startsWith(ANTISPOOF_MODEL_BASE)){
+			return {path,ok:false,reason:'허용된 로컬 모델 경로가 아님'};
+		}
+		try{
+			const response=await fetch(weightUrl,{cache:'no-store',credentials:'same-origin'});
+			if(!response.ok)throw new Error(`HTTP ${response.status}`);
+			const bytes=await response.arrayBuffer();
+			if(bytes.byteLength===0)throw new Error('빈 파일');
+			return {path,ok:true,bytes:bytes.byteLength};
+		}catch(error){
+			return {
+				path,
+				ok:false,
+				reason:error instanceof Error?error.message:'네트워크 오류',
+			};
+		}
+	}));
+	const failed=weightResults.filter(result=>!result.ok);
+	if(failed.length){
+		const detail=failed.map(result=>`${result.path}: ${result.reason}`).join('; ');
+		updateAntiSpoofDiagnostics({weights:`실패 · ${detail}`});
+		throw new Error(`안티스푸핑 가중치 로드 실패: ${detail}`);
+	}
+	const detail=weightResults.map(result=>`${result.path} ${result.bytes} bytes`).join(', ');
+	updateAntiSpoofDiagnostics({weights:`HTTP 로드 성공 · ${detail}`});
+}
+function showLivenessResult(result){
+	const details={
+		face_missing:'얼굴 미검출',
+		multiple_faces:`여러 얼굴 검출 (${result.count}명)`,
+		liveness_unavailable:'모델 점수가 없거나 로딩되지 않아 판정 불가',
+		spoof_suspected:'위조 의심 점수',
+		live_candidate:'실재 후보 점수',
+	};
+	const score=Number.isFinite(result.score)?` · 실제 모델 점수 ${result.score.toFixed(2)} / 임계값 ${result.threshold.toFixed(2)}`:'';
+	const status=result.status==='live_candidate'?'warn':'bad';
+	setStatus('livenessResult',`Human Antispoof 3.3.6 PoC · ${details[result.status]||'검사 실패'}${score} · 인증 결과 아님`,status);
+}
+function showScreen(id){
+	if(currentScreenId===id)return;
+	document.querySelectorAll('.screen').forEach(screen=>screen.classList.toggle('active',screen.id===id));
+	currentScreenId=id;
+	$(id).querySelector('h2')?.focus();
+}
+function genericError(){return '인증을 완료하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.'}
+function stopCameraPreview(){
+	cameraRequestId++;
+	analysisRequestId++;
+	if(cameraStream)cameraStream.getTracks().forEach(track=>track.stop());
+	cameraStream=null;
+	$('facePreview').srcObject=null;
+	$('facePreview').hidden=true;
+	$('cameraContinue').hidden=true;
+}
+function clearFaceResults(results){
+	for(const result of results){
+		for(const face of result?.face||[])face.embedding?.fill(0);
+		if(result?.face)result.face.length=0;
+	}
+	if(faceModel){
+		for(const face of faceModel.result?.face||[])face.embedding?.fill(0);
+		if(faceModel.result?.face)faceModel.result.face.length=0;
+		if(faceModel.process?.canvas){faceModel.process.canvas.width=0;faceModel.process.canvas.height=0}
+		faceModel.process={tensor:null,canvas:null};
+	}
+}
+async function ensureFaceModel(){
+	if(currentMode!=='self_demo')throw new Error('안티스푸핑 진단은 셀프 DEMO에서만 사용할 수 있습니다.');
+	// A model object exists before load() finishes, so always await the load promise.
+	if(!faceModelPromise){
+		if(!window.HumanBundle?.Human||!window.ExamFaceSimilarity)throw new Error('face model unavailable');
+		try{
+			await checkAntiSpoofFiles();
+		}catch(error){
+			const reason=error instanceof Error?error.message:'모델 파일 확인 실패';
+			updateAntiSpoofDiagnostics({
+				load:`실행 불가 · ${reason}`,
+				model:'실패 · 모델 파일 확인 실패',
+			});
+			throw error;
+		}
+		updateAntiSpoofDiagnostics({load:'Human 모델 로딩 중'});
+		faceModel=new HumanBundle.Human({
+			modelBasePath:ANTISPOOF_MODEL_BASE,
+			warmup:'none',
+			cacheModels:true,
+			face:{
+				enabled:true,
+				detector:{modelPath:'blazeface.json',rotation:false,maxDetected:5,skipFrames:0,skipTime:0,minConfidence:0.2},
+				mesh:{enabled:false},attention:{enabled:false},iris:{enabled:false},
+				description:{enabled:true,modelPath:'faceres.json',skipFrames:0,skipTime:0,minConfidence:0.1},
+				emotion:{enabled:false},
+				antispoof:{enabled:true,modelPath:'antispoof.json',skipFrames:0,skipTime:0},
+				liveness:{enabled:false},
+			},
+			body:{enabled:false},hand:{enabled:false},gesture:{enabled:false},
+			object:{enabled:false},segmentation:{enabled:false},
+		});
+		faceModelPromise=faceModel.load().then(()=>faceModel).catch(error=>{
+			const reason=error instanceof Error?error.message:'알 수 없는 로딩 오류';
+			updateAntiSpoofDiagnostics({
+				load:`실패 · ${reason}`,
+				model:'faceModel.load() 실패',
+			});
+			faceModel=null;
+			faceModelPromise=null;
+			throw new Error(`faceModel.load() 실패: ${reason}`);
+		});
+	}
+	const model=await faceModelPromise;
+	const stats=model.models.stats().modelStats.find(info=>info.name==='antispoof');
+	const antiSpoofModel=model.models.models.antispoof;
+	if(!stats?.loaded||!antiSpoofModel?.executor){
+		const reason=stats?.loaded===false
+			?'Human 로더가 antispoof 모델을 로드하지 못했습니다.'
+			:'Human 로더에서 antispoof 모델 상태를 확인할 수 없습니다.';
+		updateAntiSpoofDiagnostics({
+			load:`완료 · 모델 로더가 반환됨 (${stats?.loaded?'loaded':'미확인'})`,
+			model:`실패 · ${reason}`,
+		});
+		faceModel=null;
+		faceModelPromise=null;
+		throw new Error(reason);
+	}
+	updateAntiSpoofDiagnostics({
+		load:'완료 · faceModel.load() resolved',
+		model:`성공 · Human 모델 로드 완료 (${stats.sizeLoadedWeights} bytes${stats.inCache?', 브라우저 캐시':''})`,
+	});
+	return model;
+}
+async function startCameraPreview(){
+	if(!navigator.mediaDevices?.getUserMedia){
+		setStatus('cameraStatus','카메라 기능을 사용할 수 없습니다. 얼굴 비교와 QR 발급은 진행되지 않습니다. 감독관 확인을 요청하세요.','bad');
+		return;
+	}
+	$('startCamera').disabled=true;
+	try{
+		capturedFaceResult=null;
+		capturedLivenessResult=null;
+		$('completeSelfDemo').hidden=true;
+		stopCameraPreview();
+		const requestId=cameraRequestId;
+		const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+		if(requestId!==cameraRequestId){stream.getTracks().forEach(track=>track.stop());return}
+		cameraStream=stream;
+		$('facePreview').srcObject=stream;
+		$('facePreview').hidden=false;
+		await $('facePreview').play();
+		$('cameraContinue').hidden=false;
+		setStatus('cameraStatus','카메라가 준비되었습니다. 이 확인은 신원인증 결과가 아닙니다.','good');
+	}catch(error){
+		const message=window.ExamFaceSimilarity?.cameraErrorMessage(error.name)||genericError();
+		setStatus('cameraStatus',`${message} 얼굴 비교와 QR 발급은 진행되지 않습니다.`,'bad');
+	}finally{
+		$('startCamera').disabled=false;
+	}
+}
+const API_TIMEOUT_MS=10000;
+async function api(path,body){
+	const controller=new AbortController();
+	const timer=window.setTimeout(()=>controller.abort(),API_TIMEOUT_MS);
+	let response;
+	try{
+		response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',credentials:'same-origin',signal:controller.signal});
+	}catch(error){
+		throw new Error(error?.name==='AbortError'
+			?'서버 응답 시간이 초과되었습니다. 다시 시도하거나 감독관 확인을 요청하세요. 인증은 완료되지 않았습니다.'
+			:'네트워크에 연결할 수 없습니다. 연결을 확인한 뒤 다시 시도하거나 감독관 확인을 요청하세요. 인증은 완료되지 않았습니다.');
+	}finally{
+		window.clearTimeout(timer);
+	}
+	let data;
+	try{data=await response.json()}catch(error){throw new Error('서버 응답을 확인할 수 없습니다.')}
+	if(!response.ok)throw new Error(data.error||`요청 실패 (${response.status})`);
+	return data;
+}
+async function createSession(){
+	const session=await api('/api/kiosk/session',{});
+	kioskSessionId=session.kiosk_session_id;
+	sessionStorage.setItem(SESSION_KEY,kioskSessionId);
+}
+async function closeSession(){
+	clearInterval(statusTimer);
+	clearInterval(countdownTimer);
+	clearTimeout(idleTimer);
+	stopCameraPreview();
+	let cleanupFailed=false;
+	if(kioskSessionId){
+		try{await api('/api/kiosk/end',{kiosk_session_id:kioskSessionId})}
+		catch(error){cleanupFailed=true}
+	}
+	sessionStorage.removeItem(SESSION_KEY);
+	kioskSessionId='';
+	selfDemoToken='';
+	candidateRecord=null;
+	capturedFaceResult=null;
+	capturedLivenessResult=null;
+	$('candidateNumber').value='';
+	$('candidateInfo').textContent='';
+	$('registeredFacePhoto').removeAttribute('src');
+	$('registeredFacePhoto').hidden=true;
+	$('entryQr').removeAttribute('src');
+	$('entryQr').hidden=true;
+	$('entryQr').dataset.qrPayload='';
+	$('qrPanel').hidden=true;
+	$('ticketPrintActions').hidden=true;
+	$('ticketPrintArea').hidden=true;
+	$('qrNotice').hidden=true;
+	$('qrStatus').hidden=true;
+	$('reissueSelfQr').hidden=true;
+	$('nextDemoEntry').hidden=true;
+	$('approveDemoEntry').disabled=false;
+	$('completeSelfDemo').hidden=true;
+	$('completeSelfDemo').disabled=false;
+	$('cameraContinue').hidden=true;
+	$('startCamera').hidden=false;
+	setStatus('faceComparisonResult','');
+	setStatus('livenessResult','실재성 모델 검사 대기 중 · 결과 화면은 DEMO와 분리됩니다.','warn');
+	setStatus('ticketChoiceStatus','');
+	setStatus('homeStatus',cleanupFailed?genericError():'',cleanupFailed?'bad':'');
+	setStatus('lookupStatus','');
+	setStatus('cameraStatus','계속하려면 카메라를 켜 주세요.');
+	setStatus('selfResultStatus','');
+	setStatus('proctorStatus','수험번호 조회만으로 인증되지 않습니다.','warn');
+	currentMode='self_demo';
+	showScreen('homeScreen');
+}
+async function startNewSession(){
+	try{await createSession()}
+	catch(error){setStatus('homeStatus',genericError(),'bad')}
+}
+function resetIdleTimer(){
+	clearTimeout(idleTimer);
+	idleTimer=setTimeout(async()=>{
+		await closeSession();
+		await startNewSession();
+		setStatus('homeStatus','화면을 초기화했습니다. 처음부터 다시 이용해 주세요.','warn');
+	},IDLE_RESET_MS);
+}
+function beginMode(mode){
+	currentMode=mode;
+	$('modeInstructions').textContent=mode==='self_demo'
+		?'가상 수험번호 조회입니다. 셀프 절차는 DEMO 모의 인증이며 실제 신원확인이 아닙니다.'
+		:'가상 수험번호 조회 후 감독관이 등록된 신원확인 절차를 진행합니다.';
+	setStatus('lookupStatus','');
+	showScreen('numberScreen');
+	$('candidateNumber').focus();
+	resetIdleTimer();
+}
+function qrDataUrl(base64,mimeType){
+	if(mimeType!=='image/png'||typeof base64!=='string'||!base64||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))throw new Error('invalid QR image');
+	const bytes=atob(base64);
+	if(bytes.length<8||![137,80,78,71,13,10,26,10].every((value,index)=>bytes.charCodeAt(index)===value))throw new Error('invalid QR image');
+	return `data:${mimeType};base64,${base64}`;
+}
+function clearQr(){
+	clearInterval(countdownTimer);
+	$('entryQr').removeAttribute('src');
+	$('entryQr').hidden=true;
+	$('entryQr').dataset.qrPayload='';
+	$('qrPanel').hidden=true;
+	$('nextDemoEntry').hidden=true;
+}
+function displayQr(result,isDemo){
+	let imageUrl;
+	try{imageUrl=qrDataUrl(result.qr_png,result.qr_mime_type)}
+	catch(error){setStatus('qrStatus',genericError(),'bad');$('qrStatus').hidden=false;return}
+	const image=$('entryQr');
+	if(image.dataset.qrPayload===result.qr_png&&!image.hidden){
+		showScreen('qrScreen');
+		return;
+	}
+	const expiresAt=Date.now()+Math.max(0,result.expires_in)*1000;
+	clearQr();
+	$('reissueSelfQr').hidden=true;
+	$('qrNotice').hidden=true;
+	$('qrStatus').hidden=true;
+	$('qrStepCount').textContent=isDemo?'4단계':'';
+	$('qrLabel').textContent=isDemo?'DEMO 전용 QR · 실제 입실 불가':'감독관 승인 완료 · 모의 운영 QR';
+	$('qrGuidance').textContent=isDemo
+		?`DEMO QR은 발급 후 ${result.expires_in}초간 유효합니다. 실제 입실 기록이나 입실 자격을 만들지 않습니다.`
+		:'QR은 발급 후 30초간 유효합니다. 실제 기관의 입실 허가가 아닙니다.';
+	image.alt=isDemo?'실제 입실에 사용할 수 없는 DEMO QR':'감독관 승인 이후 발급된 모의 운영 QR';
+	image.onload=()=>{
+		if(image.dataset.qrPayload!==result.qr_png)return;
+		image.hidden=false;
+		$('qrPanel').hidden=false;
+		image.dataset.qrLoading='false';
+		$('ticketPrintActions').hidden=false;
+		$('ticketPrintArea').hidden=true;
+		updatePrintTicket(result,isDemo);
+		if(isDemo)$('nextDemoEntry').hidden=false;
+		startQrCountdown(expiresAt);
+	};
+	image.onerror=()=>{
+		if(image.dataset.qrPayload!==result.qr_png)return;
+		image.dataset.qrLoading='false';
+		clearQr();
+		$('qrStatus').hidden=false;
+		setStatus('qrStatus',genericError(),'bad');
+	};
+	image.dataset.qrPayload=result.qr_png;
+	image.dataset.qrLoading='true';
+	image.src=imageUrl;
+	showScreen('qrScreen');
+}
+function updatePrintTicket(result,isDemo){
+	const imageUrl=qrDataUrl(result.qr_png,result.qr_mime_type);
+	$('ticketExamName').textContent=result.exam_name||'2026 모의 자격시험';
+	$('ticketCandidateName').textContent=result.candidate_name||candidateRecord?.candidate_name||'가상 응시자';
+	$('ticketCandidateNumber').textContent=result.candidate_number||candidateRecord?.candidate_number||'';
+	$('ticketIssuedAt').textContent=result.issued_at||'서버 발급 시각 확인 불가';
+	$('ticketExpiresAt').textContent=result.expires_at||'서버 만료 시각 확인 불가';
+	$('ticketQrImage').src=imageUrl;
+	$('ticketQrImage').alt=isDemo?'공모전 시제품 · 실제 입실 불가 DEMO QR':'모의 키오스크 일회 QR';
+	$('ticketLayout').dataset.paperSize=$('paperSize').value;
+	$('ticketPrintArea').dataset.demo=isDemo?'true':'false';
+	$('ticketPrintArea').querySelector('.ticket-demo').textContent=isDemo
+		?'공모전 시제품 · 실제 입실 불가'
+		:'모의 서비스 · 실제 신원인증 아님';
+	$('ticketDemoFoot').textContent=$('ticketPrintArea').querySelector('.ticket-demo').textContent;
+	$('ticketPrintArea').querySelector('p').textContent=isDemo
+		?'이 QR은 모의 확인용이며 실제 입실 승인에 사용할 수 없습니다.'
+		:'시험장 입구에서 등록 사진과 현장 얼굴을 감독관이 대조해야 합니다.';
+}
+function startQrCountdown(expiresAt){
+	clearInterval(countdownTimer);
+	const update=()=>{
+		const remaining=Math.max(0,Math.ceil((expiresAt-Date.now())/1000));
+		$('qrCountdown').textContent=`유효시간 ${remaining}초`;
+		if(remaining===0){
+			clearQr();
+			$('qrNotice').hidden=false;
+			setStatus('qrNotice','QR이 만료되었습니다. 재발급 가능 여부를 확인하고 있습니다.','warn');
+			pollStatus();
+			clearInterval(countdownTimer);
+		}
+	};
+	update();
+	countdownTimer=setInterval(update,250);
+}
+async function pollStatus(){
+	if(!kioskSessionId)return;
+	try{
+		const result=await api('/api/kiosk/status',{kiosk_session_id:kioskSessionId});
+		if(result.state==='qr_ready'){
+			displayQr(result,false);
+		}else if(result.state==='demo_qr_ready'){
+			selfDemoToken=result.demo_token;
+			displayQr(result,true);
+		}else if(result.state==='awaiting_proctor'){
+			stopCameraPreview();
+			$('candidateInfo').textContent='응시자 정보 조회 완료 · 감독관의 확인을 기다리고 있습니다.';
+			setStatus('proctorStatus','감독관 확인 전입니다. 수험번호 조회만으로 인증되거나 승인되지 않습니다.','warn');
+			showScreen('proctorWaitScreen');
+		}else if(result.state==='expired'){
+			clearQr();
+			$('qrNotice').hidden=false;
+			$('qrStatus').hidden=true;
+			setStatus('qrNotice','QR 유효시간이 끝났습니다.','warn');
+			$('reissueSelfQr').hidden=!(currentMode==='self_demo'&&result.demo_reissue_allowed===true);
+			$('qrStepCount').textContent=currentMode==='self_demo'?'4단계':'';
+			showScreen('qrScreen');
+		}else if(result.state==='duplicate'){
+			clearQr();
+			$('qrNotice').hidden=true;
+			$('qrStatus').hidden=false;
+			setStatus('qrStatus','입실 처리된 응시자입니다. 관리자에게 문의하세요.','bad');
+			showScreen('qrScreen');
+		}else if(result.state==='verification_expired'||result.state==='rejected'){
+			clearQr();
+			$('qrNotice').hidden=true;
+			$('qrStatus').hidden=false;
+			setStatus('qrStatus',genericError(),'bad');
+			showScreen('qrScreen');
+		}else if(result.state==='completed'||result.state==='demo_completed'){
+			clearQr();
+			$('qrNotice').hidden=true;
+			$('reissueSelfQr').hidden=true;
+			$('qrStatus').hidden=false;
+			setStatus('qrStatus',result.state==='demo_completed'
+				?'DEMO 모의 입실 처리 완료 · 실제 입실 기록은 생성되지 않았습니다.'
+				:'QR이 사용 처리되었습니다. 실제 입실 승인 여부는 감독관에게 확인하세요.','good');
+			showScreen('qrScreen');
+		}
+	}catch(error){
+		setStatus('qrStatus',genericError(),'bad');
+		$('qrStatus').hidden=false;
+	}
+}
+
+$('selfModeButton').onclick=()=>beginMode('self_demo');
+$('proctorModeButton').onclick=()=>beginMode('proctor');
+$('startCamera').onclick=startCameraPreview;
+$('cameraContinue').onclick=async()=>{
+	if(currentMode!=='self_demo')return;
+	if($('cameraContinue').disabled)return;
+	$('cameraContinue').disabled=true;
+	const requestId=++analysisRequestId;
+	const assertAnalysisActive=()=>{
+		if(requestId!==analysisRequestId)throw new Error('분석 요청이 취소되었습니다.');
+	};
+	const deadline=Date.now()+ANALYSIS_TIMEOUT_MS;
+	capturedFaceResult=null;
+	capturedLivenessResult=null;
+	updateAntiSpoofDiagnostics({
+		manifest:'확인 전',
+		weights:'확인 전',
+		load:'실행 전',
+		model:'확인 전',
+		frame:'전달 전',
+		multiFrame:'검사 전',
+		faceCount:'확인 전',
+		referenceInput:'확인 전',
+		referenceBox:'확인 전',
+		referenceEmbedding:'확인 전',
+		liveInput:'확인 전',
+		liveBox:'확인 전',
+		liveEmbedding:'확인 전',
+		distance:'확인 전',
+		align:'mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)',
+		selfCompare:'확인 전',
+		distribution:'확인 전',
+		formula:'확인 전',
+		score:`점수 없음 / ${ANTISPOOF_THRESHOLD.toFixed(2)}`,
+		verdict:'검사 전',
+	});
+	renderMultiFrameRows([]);
+	$('completeSelfDemo').hidden=true;
+	$('selfCameraScreen').setAttribute('aria-busy','true');
+	setStatus('cameraStatus','Human FaceRes 및 Antispoof 모델을 실제 실행 중입니다. 완료될 때까지 다음 단계로 이동할 수 없습니다.','warn');
+	setStatus('livenessResult','Human Antispoof PoC 실행 중 · 검사 결과는 DEMO 모의 인증과 분리됩니다.','warn');
+	const results=[];
+	const frame=document.createElement('canvas');
+	try{
+		const video=$('facePreview'), reference=$('registeredFacePhoto');
+		if(!cameraStream||!video.videoWidth||!reference.complete||!reference.naturalWidth)throw new Error('comparison unavailable');
+		const scale=Math.min(1,640/video.videoWidth);
+		frame.width=Math.max(1,Math.round(video.videoWidth*scale));
+		frame.height=Math.max(1,Math.round(video.videoHeight*scale));
+		const context=frame.getContext('2d',{willReadFrequently:true});
+		if(!context)throw new Error('comparison unavailable');
+		context.drawImage(video,0,0,frame.width,frame.height);
+		updateAntiSpoofDiagnostics({
+			frame:`캡처 완료 · ${frame.width}x${frame.height} 카메라 프레임`,
+		});
+		const model=await awaitAnalysisStep(ensureFaceModel(),deadline-Date.now());
+		assertAnalysisActive();
+		const referenceResult=await awaitAnalysisStep(model.detect(reference),deadline-Date.now());
+		assertAnalysisActive();
+		results.push(referenceResult);
+		const referenceFace=referenceResult?.face?.length===1?referenceResult.face[0]:undefined;
+		const referenceDiagnostics=formatFaceDiagnostics(
+			referenceFace,
+			reference.naturalWidth,
+			reference.naturalHeight,
+		);
+		const referenceFaceCount=Array.isArray(referenceResult?.face)?referenceResult.face.length:0;
+		updateAntiSpoofDiagnostics({
+			referenceInput:`${referenceDiagnostics.input} · ${referenceFaceCount===1?'얼굴 검출':referenceFaceCount?`${referenceFaceCount}명 검출`:'얼굴 미검출'}`,
+			referenceBox:referenceDiagnostics.box,
+			referenceEmbedding:referenceDiagnostics.embedding,
+			formula:'distance=round(100×25×Σ(diff²))/100; similarity=clamp(round(((1−√distance/100−0.2)/0.6),2),0,1); 표시=similarity×100',
+		});
+		updateAntiSpoofDiagnostics({frame:'model.detect(frame) 호출 중'});
+		const frameRecords=[];
+		const frameDistances=[];
+		const livenessResults=[];
+		for(let index=0;index<MULTI_FRAME_COUNT;index++){
+			if(index>0)await awaitAnalysisStep(new Promise(resolve=>window.setTimeout(resolve,MULTI_FRAME_INTERVAL_MS)),deadline-Date.now());
+			assertAnalysisActive();
+			context.drawImage(video,0,0,frame.width,frame.height);
+			const capturedResult=await awaitAnalysisStep(model.detect(frame),deadline-Date.now());
+			assertAnalysisActive();
+			results.push(capturedResult);
+			const detectedFaces=capturedResult?.face;
+			const livenessResult=ExamFaceSimilarity.evaluateLiveness(detectedFaces,ANTISPOOF_THRESHOLD);
+			livenessResults.push(livenessResult);
+			if(referenceFace&&detectedFaces?.length===1&&detectedFaces[0]?.embedding?.length===referenceFace.embedding?.length){
+				frameDistances.push(model.match.distance(referenceFace.embedding,detectedFaces[0].embedding));
+			}
+			const actualScore=detectedFaces?.length===1?detectedFaces[0]?.real:undefined;
+			frameRecords.push({
+				index:index+1,
+				elapsedMs:Math.round(index*MULTI_FRAME_INTERVAL_MS),
+				faceCount:Array.isArray(detectedFaces)?detectedFaces.length:'결과 형식 오류',
+				score:Number.isFinite(actualScore)?actualScore.toFixed(4):'없음',
+				status:livenessResult.status,
+			});
+			renderMultiFrameRows(frameRecords);
+		}
+		const capturedResult=results[results.length-1];
+		const detectedFaces=capturedResult?.face;
+		updateAntiSpoofDiagnostics({
+			frame:`model.detect(frame) 완료 · ${MULTI_FRAME_COUNT}개 실제 캡처 프레임 전달됨`,
+			faceCount:Array.isArray(detectedFaces)?`${detectedFaces.length}명`:'결과 형식 오류',
+			multiFrame:`${frameRecords.length}개 프레임 관찰 기록 · 평균/통합 판정 안 함`,
+		});
+		const liveDiagnostics=formatFaceDiagnostics(
+			detectedFaces?.length===1?detectedFaces[0]:undefined,
+			frame.width,
+			frame.height,
+		);
+		updateAntiSpoofDiagnostics({
+			liveInput:`${liveDiagnostics.input} · ${detectedFaces?.length===1?'얼굴 검출':detectedFaces?.length?`${detectedFaces.length}명 검출`:'얼굴 미검출'}`,
+			liveBox:liveDiagnostics.box,
+			liveEmbedding:liveDiagnostics.embedding,
+		});
+		const comparison=ExamFaceSimilarity.evaluate(
+			referenceResult.face,
+			detectedFaces,
+			(first,second)=>model.match.similarity(first,second),
+			(first,second)=>model.match.distance(first,second),
+		);
+		const liveness=livenessResults[livenessResults.length-1];
+		const livenessSummary=ExamFaceSimilarity.summarizeLivenessFrames(livenessResults);
+		const explained=ExamFaceSimilarity.explainHumanDistance(comparison.distance);
+		const dist=ExamFaceSimilarity.summarizeScoreDistribution({frames:frameDistances}).frames;
+		let selfText='확인 불가';
+		if(referenceFace){
+			const again=await awaitAnalysisStep(model.detect(reference),deadline-Date.now());
+			const againFace=again?.face?.length===1?again.face[0]:undefined;
+			if(againFace?.embedding?.length===referenceFace.embedding.length){
+				selfText=`재검출 distance=${model.match.distance(referenceFace.embedding,againFace.embedding).toFixed(2)} · 동일 벡터 distance=${model.match.distance(referenceFace.embedding,referenceFace.embedding).toFixed(2)}`;
+			}
+			for(const f of again?.face||[])f.embedding?.fill(0);
+		}
+		lastDistance=Number.isFinite(comparison.distance)?comparison.distance:undefined;
+		$('recordDist').disabled=lastDistance===undefined;
+		updateAntiSpoofDiagnostics({
+			selfCompare:selfText,
+			distribution:dist?.count?`${dist.count}개 · 최소 ${dist.min.toFixed(2)} / 중앙 ${dist.median.toFixed(2)} / 최대 ${dist.max.toFixed(2)}`:'유효 프레임 없음',
+		});
+		updateAntiSpoofDiagnostics({
+			distance:Number.isFinite(comparison.distance)
+				?`${comparison.distance.toFixed(2)} (25×Σdiff², 제곱거리·비정규화)`
+				:'확인 불가',
+			...(explained?{formula:`Σdiff²=${explained.sumSquaredDiff.toFixed(3)}; L2=${explained.euclidean.toFixed(3)}; √distance/100=${explained.scaledRoot.toFixed(4)}; (1−${explained.scaledRoot.toFixed(4)}−0.2)/0.6=${explained.rawSimilarity.toFixed(4)}; similarity=${explained.similarity.toFixed(2)} (확률 아님)`}:{}),
+			score:Number.isFinite(livenessSummary.scoreMin)
+				?`${livenessSummary.scoreMin.toFixed(4)}–${livenessSummary.scoreMax.toFixed(4)} / ${ANTISPOOF_THRESHOLD.toFixed(2)}`
+				:`점수 없음 / ${ANTISPOOF_THRESHOLD.toFixed(2)}`,
+			verdict:liveness.status,
+		});
+		capturedFaceResult=comparison.status;
+		capturedLivenessResult=liveness.status;
+		showLivenessResult(liveness);
+		const browserState=ExamFaceSimilarity.browserVerificationState(comparison,liveness);
+		const stateNote=`인증 상태: ${browserState.state}(판정 불가) · 이 브라우저 결과는 verified가 될 수 없으며 감독관 확인이 필요합니다. PAD(위조 탐지) 성능은 미검증입니다.`;
+		if(comparison.status==='reference_only'){
+			setStatus('faceComparisonResult',`참고용 유사도 수치 · ${(comparison.score*100).toFixed(1)}% · 본인 여부 미확인. 검증된 판정 기준이 없어 얼굴 점수만으로 인증하거나 QR을 발급하지 않습니다. 감독관 확인을 요청하세요. ${stateNote}`,'warn');
+			$('completeSelfDemo').hidden=true;
+		}else{
+			const details={
+				reference_face_missing:'등록 사진에서 얼굴을 찾지 못했습니다.',
+				reference_face_count:`등록 사진에서 얼굴 ${comparison.count}명이 검출되었습니다.`,
+				face_missing:'촬영 사진에서 얼굴을 찾지 못했습니다.',
+				multiple_faces:`촬영 사진에서 얼굴 ${comparison.count}명이 검출되었습니다.`,
+				embedding_unavailable:'얼굴 특징값을 계산할 수 없습니다.',
+				comparison_failed:'얼굴 비교를 완료하지 못했습니다.',
+			};
+			setStatus('faceComparisonResult',`판정 불가 · ${details[comparison.status]||'얼굴 비교 기능을 사용할 수 없습니다.'} 다시 촬영하거나 감독관 확인을 요청하세요.`,'bad');
+			$('completeSelfDemo').hidden=true;
+		}
+	}catch(error){
+		capturedFaceResult='unavailable';
+		capturedLivenessResult='liveness_unavailable';
+		const reason=error instanceof Error?error.message:'알 수 없는 오류';
+		if(antiSpoofDiagnostics.frame==='전달 전'||antiSpoofDiagnostics.frame.startsWith('캡처 완료')){
+			updateAntiSpoofDiagnostics({frame:`실패 · ${reason}`});
+		}else if(antiSpoofDiagnostics.frame==='model.detect(frame) 호출 중'){
+			updateAntiSpoofDiagnostics({frame:`실패 · model.detect(frame): ${reason}`});
+		}
+		if(antiSpoofDiagnostics.model==='확인 전'||antiSpoofDiagnostics.model==='안티스푸핑 모델 로딩 중'){
+			updateAntiSpoofDiagnostics({model:`실패 · ${reason}`});
+		}
+		updateAntiSpoofDiagnostics({
+			score:`점수 없음 / ${ANTISPOOF_THRESHOLD.toFixed(2)}`,
+			multiFrame:`다중 프레임 실패 · ${reason}`,
+			distance:'확인 불가',
+			verdict:`판정 불가 · ${reason}`,
+		});
+		setStatus('faceComparisonResult','판정 불가 · 얼굴 비교 기능을 사용할 수 없습니다. QR은 발급되지 않았습니다. 다시 촬영하거나 감독관 확인을 요청하세요.','bad');
+		showLivenessResult({status:'liveness_unavailable'});
+		$('completeSelfDemo').hidden=true;
+	}finally{
+		clearFaceResults(results);
+		frame.width=0;
+		frame.height=0;
+		stopCameraPreview();
+		if(requestId===analysisRequestId)analysisRequestId++;
+		$('cameraContinue').disabled=false;
+		showScreen('selfResultScreen');
+		$('selfCameraScreen').removeAttribute('aria-busy');
+	}
+};
+$('completeSelfDemo').onclick=async()=>{
+	$('completeSelfDemo').disabled=true;
+	try{
+		throw new Error('face and single-frame liveness results are informational only');
+		const result=await api('/api/kiosk/self-demo/complete',{
+			kiosk_session_id:kioskSessionId,
+			demo_outcome:'success',
+			demo_simulation:true,
+		});
+		if(result.state!=='demo_authenticated'||result.demo_only!==true)throw new Error('invalid demo authentication response');
+		showScreen('ticketChoiceScreen');
+	}catch(error){
+		setStatus('selfResultStatus',genericError(),'bad');
+	}finally{
+		$('completeSelfDemo').disabled=false;
+	}
+};
+function applyAccessibility(){
+	for(const [id,cls,key] of [['toggleLargeText','large-text','kioskLargeText'],['toggleHighContrast','high-contrast','kioskHighContrast']]){
+		let on=false;
+		try{on=sessionStorage.getItem(key)==='1'}catch(error){}
+		document.body.classList.toggle(cls,on);
+		$(id).setAttribute('aria-pressed',String(on));
+		$(id).onclick=()=>{
+			const next=!document.body.classList.contains(cls);
+			document.body.classList.toggle(cls,next);
+			$(id).setAttribute('aria-pressed',String(next));
+			try{sessionStorage.setItem(key,next?'1':'0')}catch(error){}
+		};
+	}
+}
+applyAccessibility();
+$('recordDist').onclick=()=>{
+	if(lastDistance===undefined)return;
+	sessionDistances[$('distLabel').value==='other'?'other':'same'].push(lastDistance);
+	lastDistance=undefined;
+	$('recordDist').disabled=true;
+	$('diagSession').textContent=formatSessionDistances();
+};
+$('retryFaceCapture').onclick=()=>{
+	lastDistance=undefined;
+	$('recordDist').disabled=true;
+	capturedFaceResult=null;
+	capturedLivenessResult=null;
+	setStatus('livenessResult','실재성 모델 검사 대기 중 · 결과 화면은 DEMO와 분리됩니다.','warn');
+	$('completeSelfDemo').hidden=true;
+	setStatus('cameraStatus','계속하려면 카메라를 켜 주세요.');
+	showScreen('selfCameraScreen');
+};
+$('faceHelp').onclick=async()=>{
+	try{
+		const result=await api('/api/kiosk/help',{kiosk_session_id:kioskSessionId});
+		setStatus('proctorStatus',result.message,'warn');
+		showScreen('proctorWaitScreen');
+	}catch(error){
+		setStatus('proctorStatus',genericError(),'bad');
+		showScreen('proctorWaitScreen');
+	}
+};
+$('showQrChoice').onclick=()=>issueDemoTicket('screen');
+$('printQrChoice').onclick=()=>issueDemoTicket('print');
+async function issueDemoTicket(delivery){
+	const button=delivery==='print'?'printQrChoice':'showQrChoice';
+	$(button).disabled=true;
+	try{
+		const result=await api('/api/kiosk/self-demo/issue-ticket',{kiosk_session_id:kioskSessionId,delivery});
+		if(result.demo_only!==true||result.delivery!==delivery)throw new Error('invalid demo ticket');
+		selfDemoToken=result.demo_token;
+		displayQr(result,true);
+	}catch(error){
+		setStatus('ticketChoiceStatus',genericError(),'bad');
+	}finally{
+		$(button).disabled=false;
+	}
+}
+$('nextDemoEntry').onclick=()=>{
+	showScreen('demoEntryScreen');
+};
+$('approveDemoEntry').onclick=async()=>{
+	$('approveDemoEntry').disabled=true;
+	try{
+		await api('/api/kiosk/demo-entry',{kiosk_session_id:kioskSessionId,demo_token:selfDemoToken});
+		selfDemoToken='';
+		clearQr();
+		setStatus('demoEntryStatus','DEMO 모의 입실 처리 완료 · 실제 입실 기록은 생성되지 않았습니다.','good');
+	}catch(error){
+		setStatus('demoEntryStatus',genericError(),'bad');
+	}finally{
+		$('approveDemoEntry').disabled=false;
+	}
+};
+$('reissueSelfQr').onclick=async()=>{
+	$('reissueSelfQr').disabled=true;
+	try{
+		const result=await api('/api/kiosk/self-demo/refresh-qr',{kiosk_session_id:kioskSessionId});
+		if(result.demo_only!==true)throw new Error('invalid demo QR');
+		selfDemoToken=result.demo_token;
+		displayQr(result,true);
+	}catch(error){
+		clearQr();
+		$('qrNotice').hidden=true;
+		$('qrStatus').hidden=false;
+		setStatus('qrStatus',genericError(),'bad');
+	}finally{
+		$('reissueSelfQr').disabled=false;
+	}
+};
+$('paperSize').onchange=()=>{
+	$('ticketLayout').dataset.paperSize=$('paperSize').value;
+};
+$('printTicketButton').onclick=()=>{
+	$('ticketLayout').dataset.paperSize=$('paperSize').value;
+	$('ticketPrintArea').hidden=false;
+	document.body.dataset.printSize=$('paperSize').value;
+	window.print();
+};
+window.addEventListener('afterprint',()=>{
+	$('ticketPrintArea').hidden=true;
+	delete document.body.dataset.printSize;
+});
+$('candidateForm').onsubmit=async event=>{
+	event.preventDefault();
+	const candidateNumber=$('candidateNumber').value.replace(/[^0-9]/g,'');
+	if(!candidateNumber){setStatus('lookupStatus','수험번호를 입력해 주세요.','warn');return}
+	$('lookupButton').disabled=true;
+	try{
+		const result=await api('/api/kiosk/candidate',{kiosk_session_id:kioskSessionId,exam_id:EXAM_ID,candidate_number:candidateNumber,mode:currentMode});
+		candidateRecord=result;
+		$('candidateInfo').textContent=`${result.candidate_name} · ${result.candidate_number}`;
+		if(currentMode==='self_demo'){
+			$('registeredFacePhoto').src=result.registered_photo_url;
+			$('registeredFacePhoto').hidden=false;
+			setStatus('cameraStatus','계속하려면 카메라를 켜 주세요.');
+			$('completeSelfDemo').hidden=true;
+			capturedFaceResult=null;
+			showScreen('selfCameraScreen');
+		}else{
+			statusTimer=setInterval(pollStatus,1000);
+			setStatus('proctorStatus','응시자 정보가 조회되었습니다. 감독관 확인 전에는 인증되지 않습니다.','warn');
+			showScreen('proctorWaitScreen');
+		}
+		resetIdleTimer();
+	}catch(error){
+		setStatus('lookupStatus',genericError(),'bad');
+	}
+	finally{$('lookupButton').disabled=false}
+};
+$('helpButton').onclick=async()=>{
+	try{
+		const result=await api('/api/kiosk/help',{kiosk_session_id:kioskSessionId});
+		setStatus('helpStatus',result.message,'warn');
+		showScreen('helpScreen');
+	}catch(error){
+		setStatus('helpStatus',genericError(),'bad');
+		showScreen('helpScreen');
+	}
+};
+$('endSession').onclick=async()=>{
+	await closeSession();
+	await startNewSession();
+};
+document.addEventListener('pointerdown',resetIdleTimer);
+document.addEventListener('keydown',resetIdleTimer);
+window.addEventListener('pagehide',()=>{
+	stopCameraPreview();
+	if(kioskSessionId)navigator.sendBeacon('/api/kiosk/end',new Blob([JSON.stringify({kiosk_session_id:kioskSessionId})],{type:'application/json'}));
+	sessionStorage.removeItem(SESSION_KEY);
+});
+window.addEventListener('load',async()=>{
+	const oldSession=sessionStorage.getItem(SESSION_KEY);
+	if(oldSession){
+		try{await api('/api/kiosk/end',{kiosk_session_id:oldSession})}
+		catch(error){setStatus('homeStatus',genericError(),'bad')}
+	}
+	sessionStorage.removeItem(SESSION_KEY);
+	await startNewSession();
+	resetIdleTimer();
+});
+</script>
+</body>
+</html>
