@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: exam-safe-pass-judge
+    runtime: python
+    plan: free
+    region: singapore
+    autoDeploy: false
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: EXAM_SAFE_JUDGE_MODE
+        value: "1"
+      - key: EXAM_SAFE_COOKIE_SECURE
+        value: "1"
+      - key: EXAM_SAFE_TRUST_PROXY
+        value: "1"
+      # Free-plan filesystem is ephemeral: data is recreated (five virtual candidates) on every restart.
+      - key: EXAM_SAFE_DB
+        value: /tmp/judge/exam_safe_pass_judge.sqlite3
+      - key: EXAM_SAFE_PHOTO_DIR
+        value: /tmp/judge/photos
+      # The judge password is typed by the operator in the Render dashboard; it is never stored in this repository.
+      - key: EXAM_SAFE_JUDGE_PASSWORD
+        sync: false

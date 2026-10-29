@@ -38,6 +38,7 @@ import demo_scenarios
 import verification_policy
 import demo_candidates
 import auth_config
+import judge_mode
 import session_store
 
 
@@ -92,6 +93,8 @@ ROSTER = RosterView()
 DEMO_INFO_MAX_ATTEMPTS = 5
 # Server-side permission for the preset DEMO simulation. It never enables operational issuance.
 DEMO_SIMULATION_ENABLED = os.environ.get("EXAM_SAFE_DEMO_SIMULATION", "1") != "0"
+# Set by create_server() when EXAM_SAFE_JUDGE_MODE=1 (closed judge sandbox; see judge_mode.py).
+JUDGE_MODE = False
 VENDOR_FILES = {
     "qr-decoder.min.js",
     "ZXING-BROWSER-LICENSE.txt",
@@ -292,7 +295,7 @@ def initialize_db() -> None:
             WHERE liveness_transaction_id IS NOT NULL
             """
         )
-        demo_candidates.init_schema(connection)
+        demo_candidates.init_schema(connection, legacy=not JUDGE_MODE)
 
 
 def token_digest(token: str) -> str:
@@ -732,6 +735,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                                 details="state-changing request rejected by origin allow-list")
                 self._send_json(403, {"error": "허용되지 않은 출처(Origin)의 요청입니다."})
                 return
+            if self.server.judge is not None and not self._judge_gate():
+                return
             handler()
         except CandidateGone:
             self._send_json(
@@ -744,6 +749,102 @@ class RequestHandler(BaseHTTPRequestHandler):
         finally:
             for store in (self.server.sessions, self.server.kiosk_sessions):
                 store.flush()
+
+    def _judge_gate(self) -> bool:
+        """Judge sandbox: no data or demo API is reachable without a judge session. Returns True to continue."""
+        path = judge_mode.safe_path(self.path)
+        method = self.command
+        if method == "GET" and path == "/healthz":
+            self._send_json(200, {"status": "ok"})
+            return False
+        if method == "GET" and path == "/judge-login":
+            self._send_file(ROOT / "judge_login.html")
+            return False
+        if method == "POST" and path == judge_mode.LOGIN_PATH:
+            self._judge_login()
+            return False
+        session = self._current_session()
+        if not session or session.get("role") != judge_mode.ROLE:
+            if method == "GET" and judge_mode.wants_html(self.headers, path):
+                self.send_response(302)
+                self.send_header("Location", "/judge-login")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self._send_json(401, {"error": "심사용 로그인이 필요합니다.", "login": "/judge-login"})
+            return False
+        if not judge_mode.route_allowed(method, path):
+            self._send_json(403, {"error": "심사용 배포에서는 사용할 수 없는 기능입니다."})
+            return False
+        if method != "GET" and not self._csrf_ok(session):
+            self._send_json(403, {"error": "CSRF 토큰이 올바르지 않습니다. 페이지를 새로 고쳐 다시 로그인해 주세요."})
+            return False
+        if method == "GET" and path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/kiosk")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+        if method == "GET" and path == "/api/judge/session":
+            self._judge_session_info(session)
+            return False
+        if method == "POST" and path == "/api/judge/logout":
+            self.server.sessions.pop(self._session_id(), None)
+            self._send_json(200, {"success": True}, extra_headers={"Set-Cookie": self._session_cookie("", 0)})
+            return False
+        if method == "POST" and path == "/api/judge/reset":
+            self._reset_demo()
+            return False
+        return True
+
+    def _judge_session_info(self, session: dict) -> None:
+        self._send_json(200, {
+            "judge": True,
+            "csrf_token": session["csrf"],
+            "expires_in": max(0, int(session.get("expires_at", 0) - time.time())),
+            "candidates": judge_mode.roster_for_banner(),
+            "notice": "심사용 DEMO · 합성 프로필 · 공식 신분 인증 아님 · 실제 입실 불가",
+        })
+
+    def _judge_login(self) -> None:
+        judge = self.server.judge
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        password = payload.get("password")
+        if not isinstance(password, str) or not 1 <= len(password) <= 200:
+            self._send_json(400, {"error": "비밀번호를 입력해 주세요."})
+            return
+        client = judge_mode.client_key(self.headers, self.client_address[0], judge.trust_proxy)
+        for limiter, key in ((self.server.login_limiter, f"judge|{client}"), (self.server.global_limiter, "judge|*")):
+            wait = limiter.retry_after(key)
+            if wait:
+                self._send_json(429, {"error": f"로그인 시도가 너무 많습니다. {wait}초 후 다시 시도해 주세요."},
+                                extra_headers={"Retry-After": str(wait)})
+                return
+        if not auth_config.verify_password(password, judge.password_hash):
+            self.server.login_limiter.record_failure(f"judge|{client}")
+            self.server.global_limiter.record_failure("judge|*")
+            with connect_db() as connection:
+                write_event(connection, "심사용 로그인 실패", "blocked", actor="judge", details="invalid password")
+            self._send_json(401, {"error": "비밀번호가 올바르지 않습니다."})
+            return
+        self.server.login_limiter.reset(f"judge|{client}")
+        previous = self._session_id()
+        if previous:
+            self.server.sessions.pop(previous, None)  # session fixation defence
+        session_id, csrf_token = judge_mode.new_session_tokens()
+        self.server.sessions[session_id] = {
+            "csrf": csrf_token, "role": judge_mode.ROLE, "candidate_id": None,
+            "expires_at": time.time() + judge.session_seconds,
+        }
+        with connect_db() as connection:
+            write_event(connection, "심사용 로그인", "info", actor="judge", details="judge session opened")
+        self._send_json(200, {"success": True, "csrf_token": csrf_token, "expires_in": judge.session_seconds},
+                        extra_headers={"Set-Cookie": self._session_cookie(session_id, judge.session_seconds)})
 
     def do_PUT(self) -> None:
         self._guarded(self._handle_PUT)
@@ -2055,6 +2156,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "서버가 확인한 DEMO 추가 정보 일치가 없어 QR을 발급할 수 없습니다.", "demo_only": True})
                 return
             issue_actor = "kiosk"
+        elif self.server.judge is not None:
+            # The authenticated judge session is the server-side DEMO permission; the QR remains DEMO-only.
+            issue_actor = "judge-demo"
         elif not self._require_role("proctor"):
             return
         with self.server.kiosk_lock:
@@ -4097,13 +4201,39 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 def create_server(host: str, port: int, environ: dict[str, str] | None = None) -> DemoServer:
     """Build the server. Raises auth_config.ConfigError when required admin secrets are missing or insecure."""
+    global JUDGE_MODE, DEMO_SIMULATION_ENABLED
     environ = dict(os.environ if environ is None else environ)
-    auth = auth_config.load_auth_config(environ, port)
+    judge = None
+    if judge_mode.enabled(environ):
+        judge = judge_mode.load_config(
+            environ, database=DATABASE, photo_dir=demo_candidates.PHOTO_DIR, root=ROOT
+        )
+        # Judge sandbox: no role accounts or role keys exist, so header/key/login authentication is impossible.
+        auth = auth_config.AuthConfig()
+        JUDGE_MODE = True
+        DEMO_SIMULATION_ENABLED = True
+    else:
+        auth = auth_config.load_auth_config(environ, port)
+        JUDGE_MODE = False
     initialize_db()
+    if judge is not None:
+        with connect_db() as connection:
+            judge_mode.seed_virtual_candidates(connection)
     server = DemoServer((host, port), RequestHandler)
-    if port == 0:
+    if judge is not None:
+        origins = set(auth_config.trusted_origins(environ, server.server_address[1]))
+        render = judge_mode.render_origin(environ)
+        if render:
+            origins.add(render)
+        auth.allowed_origins = frozenset(origins)
+    elif port == 0:
         auth.allowed_origins = auth_config.trusted_origins(environ, server.server_address[1])
     server.auth = auth
+    server.judge = judge
+    server.global_limiter = auth_config.LoginRateLimiter(
+        max_failures=judge.global_max_failures if judge else 1000,
+        window_seconds=judge.window_seconds if judge else 300,
+    )
     server.cookie_secure = environ.get("EXAM_SAFE_COOKIE_SECURE", "") == "1"
     server.login_limiter = auth_config.LoginRateLimiter(
         max_failures=int(environ.get("EXAM_SAFE_LOGIN_MAX_FAILURES", "5")),
@@ -4126,8 +4256,10 @@ def create_server(host: str, port: int, environ: dict[str, str] | None = None) -
 
 def main() -> None:
     auth_config.load_env_file(ROOT / ".env")
-    host = os.environ.get("EXAM_SAFE_HOST", "127.0.0.1")
-    port = int(os.environ.get("EXAM_SAFE_PORT", "8000"))
+    # Render injects PORT and requires a 0.0.0.0 bind; the development default stays loopback-only.
+    hosted = bool(os.environ.get("PORT")) or judge_mode.enabled(os.environ)
+    host = os.environ.get("EXAM_SAFE_HOST", "0.0.0.0" if hosted else "127.0.0.1")
+    port = int(os.environ.get("PORT") or os.environ.get("EXAM_SAFE_PORT", "8000"))
     try:
         server = create_server(host, port)
     except auth_config.ConfigError as exc:

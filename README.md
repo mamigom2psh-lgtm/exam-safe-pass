@@ -8,6 +8,10 @@
 
 모의 모바일신분증 결과는 `demo_mobile_id_auth`에만 저장하며, DEMO QR은 `demo_tokens`, 모의 입실은 `demo_admissions`에만 기록합니다. `/api/token`, `/api/token/inspect`, `/api/approve`는 DEMO 증명·토큰을 거부합니다. 실물 신분증 모의 판정, 책임자 예외, 감독관 키오스크 시연 또한 운영 `admissions`를 생성하지 않습니다. 현재 `OFFICIAL_MOBILE_ID_PROVIDER`는 미설정이고 `INSTITUTION_ADMISSION_POLICY_APPROVED`는 비활성화되어 있으므로 공식 인증·운영 QR·운영 입실 승인은 서버에서 거부됩니다. 공식 provider 어댑터 계약은 서명 검증 근거, 검증 출처와 키 ID, 요청/거래번호, 발급·만료시각, 명부 응시자 일치 여부뿐 아니라 서명된 liveness 검증 출처·모델 버전·점수/임계값·응시자/요청 바인딩·유효기간도 요구합니다. 서버는 identity/liveness 거래번호 재사용을 각각 거부합니다. 다만 실제 공식 서명 검증기·신뢰 검증키와 신뢰 가능한 서버측 실재성 검증기가 구성되지 않아 이 경로는 현재 사용할 수 없습니다. 브라우저 DEMO의 얼굴 프레임이나 점수는 운영 API로 보내지 않습니다. 운영 승인은 기관 정책, 공식 신원검증, 신뢰 가능한 운영용 실재성 증명이 모두 갖춰질 때까지 차단합니다.
 
+## 심사위원 전용 배포
+
+Render 심사용 DEMO 배포는 [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md), 점검표는 [docs/JUDGE_CHECKLIST.md](docs/JUDGE_CHECKLIST.md) 를 참고하세요(개발 저장소를 그대로 배포하지 말고 `tools/export_judge_repo.py` 로 만든 깨끗한 저장소를 사용).
+
 ## 공식 모바일신분증 연동 준비 상태
 
 공식 문서 확인 기준: [모바일신분증 개발지원센터](https://dev.mobileid.go.kr/mip/dfs/dfsmain.do), [연계서비스 이용 가이드](https://dev.mobileid.go.kr/mip/dfs/useguide/mdGuide.do?guide=cntcuseguide), [개발지원센터 안내/문의](https://dev.mobileid.go.kr/mip/dfs/apiuse/apiuseinfo.do).

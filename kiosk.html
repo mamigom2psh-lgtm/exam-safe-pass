@@ -107,6 +107,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 </div>
 </header>
 <main id="mainContent" tabindex="-1">
+<div class="notice" id="judgeBanner" role="note" hidden></div>
 <ol id="flowSteps" class="flow-steps" aria-label="입실 시연 진행 단계 (DEMO · 실제 인증 아님)"></ol>
 <div class="notice">공모전 시제품 · 모바일신분증은 모의 인증만 제공하며 공식 기관 연동은 미구현입니다. 화면 결과와 QR은 실제 신원확인 또는 실제 입실 허가가 아닙니다.</div>
 <div class="card">
@@ -137,7 +138,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <p class="lead">가상 등록 사진과 약 2.5초 동안 수집한 카메라 8개 프레임을 이 브라우저에서 비교하고, 프레임별 안티스푸핑 모델 점수를 표시합니다. 결과는 연구용 참고값이며 실제 신원확인이나 운영 인증이 아닙니다.</p>
 <img id="registeredFacePhoto" class="roster-photo" alt="가상 응시자 등록 사진" hidden>
 <video id="facePreview" class="camera-preview" autoplay muted playsinline aria-label="카메라 미리보기" hidden></video>
-<div class="row"><button id="startCamera" type="button">카메라 켜기</button><button id="cameraContinue" type="button" hidden>촬영 후 참고 분석</button></div>
+<div class="row"><button id="startCamera" type="button">카메라 켜기</button><button id="cameraContinue" type="button" hidden>촬영 후 참고 분석</button><button id="skipCameraSim" class="secondary" type="button" hidden>카메라 없이 사전 설정 시뮬레이션 체험</button></div>
 <div class="status" id="cameraStatus" aria-live="polite" aria-atomic="true">계속하려면 카메라를 켜 주세요. 비교가 완료되기 전에는 결과 단계로 진행되지 않습니다.</div>
 <p class="small">사용 기술: Human 3.3.6 FaceRes 얼굴 비교 및 Human Antispoof 모델. 프레임 기록은 평균·통합 판정에 사용하지 않으며, 사진·화면 재생 공격에 대한 성능은 검증되지 않았습니다.</p>
 </section>
@@ -738,14 +739,39 @@ async function loadRegisteredPhoto(url){
 	releaseRegisteredPhoto();
 	const image=$('registeredFacePhoto');
 	if(!url){image.hidden=true;return}
-	const response=await fetch(url,{headers:{'X-Kiosk-Session':kioskSessionId},cache:'no-store',credentials:'omit'});
+	const response=await fetch(url,{headers:{'X-Kiosk-Session':kioskSessionId},cache:'no-store',credentials:'same-origin'});
 	if(!response.ok)throw new Error('registered photo unavailable');
 	registeredPhotoObjectUrl=URL.createObjectURL(await response.blob());
 	image.hidden=false;
 	await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=registeredPhotoObjectUrl});
 }
 let csrfToken='';
+let judgeActive=false;
+// Judge deployment only: the server hands the session's CSRF token to the logged-in judge. Elsewhere this is a 404 and ignored.
+const judgeReady=(async()=>{
+	try{
+		const response=await fetch('/api/judge/session',{credentials:'same-origin',cache:'no-store'});
+		if(response.status===401){location.href='/judge-login';return}
+		if(!response.ok)return;
+		const info=await response.json();
+		if(!info.judge)return;
+		csrfToken=info.csrf_token;
+		judgeActive=true;
+		$('skipCameraSim').hidden=false;
+		const box=$('judgeBanner');
+		if(box){
+			box.hidden=false;
+			box.textContent='';
+			const title=document.createElement('strong');
+			title.textContent=info.notice;
+			const help=document.createElement('p');
+			help.textContent='카메라 없이 체험하려면 셀프 인증 시작 → 수험번호 조회 → 「카메라 없이 사전 설정 시뮬레이션 체험」 → 「자동 발급 시연(DEMO)」 순서로 누르세요. 가상 응시자: '+info.candidates.map(c=>c.number+' '+c.name+' ('+c.virtual_code+')').join(' · ');
+			box.append(title,help);
+		}
+	}catch(error){/* not a judge deployment */}
+})();
 async function api(path,body){
+	await judgeReady;
 	const controller=new AbortController();
 	const timer=window.setTimeout(()=>controller.abort(),API_TIMEOUT_MS);
 	let response;
@@ -760,6 +786,7 @@ async function api(path,body){
 	}
 	let data;
 	try{data=await response.json()}catch(error){throw new Error('서버 응답을 확인할 수 없습니다.')}
+	if(response.status===401&&judgeActive){location.href='/judge-login';throw new Error('심사용 세션이 만료되었습니다. 다시 로그인해 주세요.')}
 	if(!response.ok)throw new Error(data.error||`요청 실패 (${response.status})`);
 	if(path==='/api/login'&&data.csrf_token)csrfToken=data.csrf_token;
 	return data;
@@ -1441,6 +1468,15 @@ async function runAutoIssue(){
 	}
 }
 $('autoIssueDemo').onclick=runAutoIssue;
+// Judge deployment only: lets reviewers reach the preset simulation without a camera. No face result exists in this path.
+$('skipCameraSim').onclick=()=>{
+	stopCameraPreview();
+	setStatus('faceComparisonResult','카메라 분석을 건너뛰었습니다. 얼굴 비교 결과가 없으며 이는 본인 확인이 아닙니다. 아래 사전 설정 시연 또는 감독관 확인으로 진행하세요.','warn');
+	setStatus('verificationStateResult','인증 상태: 확인 전 (카메라 분석 없음)','warn');
+	$('demoInfoGatePanel').hidden=true;
+	showScreen('selfResultScreen');
+	$('simPanel').scrollIntoView({block:'center'});
+};
 $('simLoginForm').onsubmit=async event=>{
 	event.preventDefault();
 	try{

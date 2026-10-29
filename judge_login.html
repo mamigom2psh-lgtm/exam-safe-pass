@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>심사위원 체험 로그인 · 시험장 안심패스 플러스</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Noto Sans KR",sans-serif;font-size:18px;background:#f3f6fa;color:#14202e}
+header{background:#12355b;color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:24px}
+main{max-width:520px;margin:0 auto;padding:18px}
+section{background:#fff;border:1px solid #c5d0dc;border-radius:12px;padding:18px}
+label{display:block;font-weight:700;margin:12px 0 6px}
+input,button{font:inherit;padding:10px 12px;border-radius:8px;border:2px solid #71849a;min-height:44px;width:100%}
+button{background:#12355b;color:#fff;border-color:#12355b;cursor:pointer;margin-top:14px}
+button:focus-visible,input:focus-visible{outline:3px solid #f5a623;outline-offset:2px}
+.status{margin:10px 0;padding:10px 14px;border-radius:8px;background:#fde8e8;color:#7a1212}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>심사위원 체험 로그인</h1></header>
+<main>
+<section>
+<p><strong>시험장 안심패스 플러스 · 공모전 심사용 DEMO</strong><br>
+가상 응시자와 합성 프로필만 사용하는 시제품입니다. 공식 신분 인증이 아니며 실제 입실에 사용할 수 없습니다. 실제 얼굴 촬영 없이 체험할 수 있습니다.</p>
+<div class="status" id="status" role="alert" hidden></div>
+<form id="loginForm">
+<label for="judgePass">심사용 비밀번호</label>
+<input id="judgePass" type="password" autocomplete="current-password" required>
+<button type="submit">체험 시작</button>
+</form>
+</section>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+$('loginForm').onsubmit=async event=>{
+	event.preventDefault();
+	try{
+		const response=await fetch('/api/judge/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',
+			body:JSON.stringify({password:$('judgePass').value})});
+		const data=await response.json().catch(()=>({}));
+		if(!response.ok)throw new Error(data.error||'로그인하지 못했습니다.');
+		$('judgePass').value='';
+		location.href='/kiosk';
+	}catch(error){const box=$('status');box.hidden=false;box.textContent=error.message}
+};
+</script>
+</body>
+</html>

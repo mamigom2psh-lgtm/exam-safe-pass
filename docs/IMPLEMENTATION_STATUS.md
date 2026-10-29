@@ -112,3 +112,13 @@ QR 디코드 간헐 실패: 원인은 서버 QR 생성이 아니라 zxing-js의 
 - 세션: SQLite 저장(세션 ID는 SHA-256만 저장, QR 토큰/이미지는 저장 안 함), 재시작 후에도 만료 시각 유지, 로그인 시 세션 ID 재발급(고정 방지), 로그아웃 서버 폐기.
 - `/demo-candidates`는 관리자 쿠키 세션 없이는 401 + 데이터 없는 로그인 폼(no-store). 로그인 실패는 속도 제한.
 - 한계: 세션 ID 외 Origin 없는 비브라우저 요청은 허용(쿠키 세션은 CSRF 토큰 필요), 세션 저장은 단일 프로세스 가정, 실제 브라우저(Codespaces 외부 주소)·프린터 미검증, 과거 Git 기록의 옛 기본값은 교체 필요.
+
+## 심사위원 전용 Render DEMO 배포 준비 (judge_mode.py) — 준비 완료, 실제 배포는 하지 않음
+
+- `EXAM_SAFE_JUDGE_MODE=1` 이면 닫힌 샌드박스로 동작: 심사용 비밀번호(환경변수, 12자 이상, 메모리에는 scrypt 해시만)로 로그인해야 `/kiosk` 및 체험 API 사용 가능. 공개 경로는 `/healthz`(상태만), `/judge-login`뿐.
+- 관리자·운영·시나리오 경로(`/demo-candidates`, `/api/admin/*`, `/api/token*`, `/api/demo/*`, `/api/login` 등)는 로그인해도 403. 역할 계정/키가 없어 헤더 키 인증 불가.
+- 가상 응시자 5명 + 생성형 만화 아바타만 사용(`images/`·개발 DB·`demo_photos/` 경로 사용 시 시작 거부). 시작 때마다 임시 DB에서 재생성.
+- 세션 만료(기본 2시간), 로그인 실패 속도 제한(클라이언트별 + 전체), CSRF 토큰 + Origin 허용 목록(`RENDER_EXTERNAL_URL`, `EXAM_SAFE_ALLOWED_ORIGINS`).
+- 카메라 없는 기본 체험: 「카메라 없이 사전 설정 시뮬레이션 체험」 → 「자동 발급 시연(DEMO)」. QR은 DEMO 전용(30초, 1회, 실제 입실 불가). 얼굴 점수는 인증/QR 근거가 아님.
+- 배포 도구: `render.yaml`, `tools/export_judge_repo.py`(허용 목록 내보내기·감사·새 로컬 저장소 1커밋, push 없음), `tools/reset_judge_data.py`, `docs/RENDER_DEPLOY.md`, `docs/JUDGE_CHECKLIST.md`.
+- 미검증: 실제 Render 배포, 외부 브라우저·스마트폰 실기기, 카메라·프린터, Render 프록시 뒤 클라이언트 IP 속도 제한. 속도 제한은 메모리 기반이라 재시작 시 초기화.

@@ -129,7 +129,7 @@ def _text(payload: dict, key: str, label: str, *, max_len: int = 40, required: b
     return value.strip()
 
 
-def init_schema(connection: sqlite3.Connection) -> None:
+def init_schema(connection: sqlite3.Connection, *, legacy: bool = True) -> None:
     connection.executescript(SCHEMA)
     now = _now()
     for exam in DEFAULT_EXAMS:
@@ -138,7 +138,8 @@ def init_schema(connection: sqlite3.Connection) -> None:
             (exam["id"], exam["kind"], exam["name"], json.dumps(exam["grades"], ensure_ascii=False),
              exam.get("default_grade"), now, now),
         )
-    migrate_legacy(connection)
+    if legacy:
+        migrate_legacy(connection)
 
 
 def migrate_legacy(connection: sqlite3.Connection) -> None:
