@@ -46,6 +46,11 @@ KIOSK_PRINT_QR_TTL_SECONDS = int(
 )
 if KIOSK_PRINT_QR_TTL_SECONDS < 30:
     raise RuntimeError("EXAM_SAFE_KIOSK_PRINT_QR_TTL_SECONDS must be at least 30")
+KIOSK_BROWSER_ASSERTION_FIELDS = frozenset({
+    "face_score", "face_similarity", "face_match", "captured_face_result",
+    "face_comparison_result", "face_verified", "authentication_success",
+    "real_authentication", "liveness", "score", "verified",
+})
 EXAM_ID = "exam-demo-2026"
 ROSTER = {
     ("exam-demo-2026", "candidate-001"): {"name": "김안심", "number": "2026-0012"},
@@ -726,6 +731,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/kiosk/self-demo/issue-ticket":
             self._issue_kiosk_self_demo_ticket()
+            return
+        if path == "/api/kiosk/self-demo/request-review":
+            self._kiosk_self_demo_request_review()
+            return
+        if path == "/api/kiosk/demo-auto-issue":
+            self._kiosk_demo_auto_issue()
             return
         if path == "/api/kiosk/self-demo/refresh-qr":
             self._refresh_kiosk_self_demo_qr()
@@ -1587,6 +1598,144 @@ class RequestHandler(BaseHTTPRequestHandler):
                 requests.append(request)
         self._send_json(200, {"requests": requests})
 
+    def _kiosk_self_demo_request_review(self) -> None:
+        """Hand a real-camera self DEMO session to the supervisor queue (no score is accepted)."""
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        if KIOSK_BROWSER_ASSERTION_FIELDS.intersection(payload):
+            self._send_json(400, {"error": "브라우저 얼굴 분석 결과는 서버에서 사용하지 않습니다.", "demo_only": True, "real_authentication": False})
+            return
+        self._purge_expired_kiosk_sessions()
+        session = self._kiosk_session(payload.get("kiosk_session_id"))
+        if not session:
+            self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
+            return
+        with self.server.kiosk_lock:
+            if session.get("mode") == "self_demo" and session["state"] == "awaiting_self_auth":
+                session["mode"] = "proctor_fallback"
+                session["state"] = "awaiting_proctor"
+            elif session["state"] != "awaiting_proctor":
+                self._send_json(409, {"error": "감독관 확인을 요청할 수 있는 상태가 아닙니다."})
+                return
+            session["last_activity"] = time.time()
+            with connect_db() as connection:
+                write_event(
+                    connection,
+                    "키오스크 감독관 확인 요청",
+                    "pending",
+                    exam_id=session["exam_id"],
+                    candidate_id=session["candidate_id"],
+                    actor="kiosk",
+                    details="authentication_path=self_demo; real camera analysis is informational (inconclusive); supervisor review requested; DEMO",
+                )
+        self._send_json(
+            200,
+            {
+                "state": "awaiting_proctor",
+                "authentication_mode": "proctor_fallback",
+                "demo_only": True,
+                "real_authentication": False,
+                "message": "감독관 확인을 요청했습니다. 감독관이 서버에서 승인하면 DEMO QR이 발급됩니다.",
+            },
+        )
+
+    def _kiosk_demo_auto_issue(self) -> None:
+        """Preset DEMO simulation: needs a server-verified proctor role, ignores any face result."""
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        if KIOSK_BROWSER_ASSERTION_FIELDS.intersection(payload):
+            self._send_json(400, {"error": "자동 발급 시연은 얼굴 분석 결과를 받지 않습니다.", "demo_only": True, "real_authentication": False})
+            return
+        if payload.get("demo_simulation") is not True or payload.get("scenario") != "preset_auto_issue":
+            self._send_json(400, {"error": "자동 발급 시연 시나리오를 명시해야 합니다."})
+            return
+        session = self._kiosk_session(payload.get("kiosk_session_id"))
+        if not session:
+            self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
+            return
+        if not self._require_role("proctor"):
+            return
+        with self.server.kiosk_lock:
+            if session.get("mode") != "self_demo" or session["state"] != "awaiting_self_auth":
+                self._send_json(409, {"error": "자동 발급 시연을 시작할 수 있는 상태가 아닙니다. 이미 발급되었거나 감독관 확인 중입니다."})
+                return
+            now = time.time()
+            candidate_id = session["candidate_id"]
+            exam_id = session["exam_id"]
+            with connect_db() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                if connection.execute(
+                    """
+                    SELECT 1 FROM admissions WHERE exam_id = ? AND candidate_id = ?
+                    UNION ALL
+                    SELECT 1 FROM demo_admissions WHERE exam_id = ? AND candidate_id = ?
+                    LIMIT 1
+                    """,
+                    (exam_id, candidate_id, exam_id, candidate_id),
+                ).fetchone():
+                    session["state"] = "duplicate"
+                    write_event(connection, "키오스크 자동 발급 시연 차단", "blocked", exam_id=exam_id,
+                                candidate_id=candidate_id, actor="proctor", details="DEMO simulation; duplicate admission")
+                    self._send_json(409, {"error": "이미 입실 처리된 응시자입니다."})
+                    return
+                demo_token = f"DEMO-ONLY:SELF:{secrets.token_urlsafe(32)}"
+                expires_at = now + TOKEN_TTL_SECONDS
+                qr_png = self._generate_qr_png(demo_token)
+                connection.execute(
+                    """
+                    INSERT INTO demo_tokens (token_hash, exam_id, candidate_id, pathway, issued_at, expires_at)
+                    VALUES (?, ?, ?, 'self_demo', ?, ?)
+                    """,
+                    (token_digest(demo_token), exam_id, candidate_id, now, expires_at),
+                )
+                session.update(
+                    {
+                        "state": "demo_qr_ready",
+                        "demo_token_hash": token_digest(demo_token),
+                        "demo_token": demo_token,
+                        "demo_qr_png": qr_png,
+                        "demo_issued_at": now,
+                        "demo_delivery": "screen",
+                        "demo_expires_at": expires_at,
+                        "demo_simulation": True,
+                        "demo_auth_expires_at": now + TOKEN_TTL_SECONDS + AUTH_PROOF_TTL_SECONDS,
+                    }
+                )
+                write_event(
+                    connection,
+                    "키오스크 자동 발급 시연(DEMO)",
+                    "accepted",
+                    exam_id=exam_id,
+                    candidate_id=candidate_id,
+                    actor="proctor",
+                    details=f"authentication_path=self_demo; preset simulation independent of face analysis; DEMO-only one-time QR {TOKEN_TTL_SECONDS}s; not real authentication",
+                )
+        self._send_json(
+            200,
+            {
+                "state": "demo_qr_ready",
+                "qr_png": qr_png,
+                "qr_mime_type": "image/png",
+                "expires_in": TOKEN_TTL_SECONDS,
+                "demo_only": True,
+                "simulation": True,
+                "real_authentication": False,
+                "demo_token": demo_token,
+                "delivery": "screen",
+                "exam_name": "2026 모의 자격시험",
+                "candidate_name": ROSTER[(exam_id, candidate_id)]["name"],
+                "candidate_number": ROSTER[(exam_id, candidate_id)]["number"],
+                "issued_at": datetime.fromtimestamp(now, timezone.utc).astimezone().isoformat(timespec="seconds"),
+                "expires_at": datetime.fromtimestamp(expires_at, timezone.utc).astimezone().isoformat(timespec="seconds"),
+            },
+        )
+
     def _kiosk_status(self) -> None:
         try:
             payload = self._read_json()
@@ -1683,6 +1832,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         "qr_mime_type": "image/png",
                         "expires_in": max(0, math.ceil(session["demo_expires_at"] - now)),
                         "demo_only": True,
+                        "simulation": bool(session.get("demo_simulation")),
                         "demo_token": session["demo_token"],
                         "delivery": session.get("demo_delivery"),
                         "exam_name": "2026 모의 자격시험",

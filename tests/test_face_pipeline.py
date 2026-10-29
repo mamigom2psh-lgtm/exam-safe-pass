@@ -1,3 +1,4 @@
+import re
 import hashlib
 import subprocess
 import unittest
@@ -55,3 +56,41 @@ class FaceMeshPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HairRobustnessExperimentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.kiosk = (ROOT / "kiosk.html").read_text(encoding="utf8")
+
+    def test_diagnostic_rows_required_by_spec_exist(self):
+        for element in ("diagFacemesh", "diagAlignApplied", "diagAlignment", "diagCrop", "diagReason", "diagReferenceBox", "diagLiveBox"):
+            self.assertIn(f'id="{element}"', self.kiosk)
+        self.assertIn("정렬 전/후 원시 거리", self.kiosk)
+        self.assertIn("판정 불가 사유", self.kiosk)
+
+    def test_similarity_percent_is_labelled_not_a_probability(self):
+        self.assertIn("동일인일 확률이 아니며", self.kiosk)
+        self.assertIn("확률 아님", self.kiosk)
+
+    def test_crop_and_alignment_experiments_never_feed_verdict_or_server(self):
+        for forbidden in ("refCore", "liveCore", "cropText", "alignmentPairs"):
+            for request in re.findall(r"api\('/api/[^']+',\{[^}]*\}", self.kiosk):
+                self.assertNotIn(forbidden, request)
+        analysis = self.kiosk[self.kiosk.index("$('cameraContinue').onclick"):self.kiosk.index("$('completeSelfDemo').onclick")]
+        self.assertIn("ExamFaceSimilarity.evaluate(\n\t\t\treferenceResult.face,\n\t\t\tdetectedFaces", analysis)
+        self.assertIn("evaluateLiveness(detectedFaces", analysis)
+        # PAD input is the baseline capture only: the crop/alignment results are not passed to it.
+        self.assertNotIn("evaluateLiveness(refCore", analysis)
+        self.assertNotIn("evaluateLiveness(alignedFrame", analysis)
+
+    def test_crop_experiment_is_safe_when_it_fails(self):
+        self.assertIn("catch(error){cropText=`측정 실패", self.kiosk)
+        self.assertIn("results.push(result)", self.kiosk)  # embeddings are zeroed with the other results
+
+    def test_facemesh_failure_text_and_fallback(self):
+        self.assertIn("기본 참고 분석으로 전환", self.kiosk)
+
+    def test_uncertain_result_offers_supervisor_path_in_ui(self):
+        self.assertIn('id="faceHelp"', self.kiosk)
+        self.assertIn("/api/kiosk/self-demo/request-review", self.kiosk)

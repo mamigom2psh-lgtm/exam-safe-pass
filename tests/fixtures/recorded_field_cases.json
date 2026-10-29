@@ -49,5 +49,15 @@
   "pad_untested_attack_types": [
     "printed_photo",
     "replay_video"
-  ]
+  ],
+  "hairstyle_change_field_report": {
+    "description": "Registered photo taken with short hair; candidate now has long hair, sometimes tied. Same person, scores low and inconclusive.",
+    "live_similarity_percent_range": [
+      50,
+      53
+    ],
+    "phone_screen_same_person_percent_max": 80,
+    "interpretation": "Reference-only percentages; not probabilities. Phone-screen photo of the registered look scored higher than live capture, which is not evidence of liveness.",
+    "status": "unresolved_needs_labelled_samples"
+  }
 }

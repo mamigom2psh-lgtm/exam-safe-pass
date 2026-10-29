@@ -206,8 +206,15 @@
 		if (!valid.length) return { count: 0 };
 		const deltas = valid.map((p) => p.aligned - p.baseline).sort((a, b) => a - b);
 		const mid = deltas.length >> 1;
+		const median = (values) => {
+			const sorted = [...values].sort((a, b) => a - b);
+			const m = sorted.length >> 1;
+			return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
+		};
 		return {
 			count: valid.length,
+			medianBaseline: median(valid.map((p) => p.baseline)),
+			medianAligned: median(valid.map((p) => p.aligned)),
 			improved: deltas.filter((d) => d < 0).length,
 			worsened: deltas.filter((d) => d > 0).length,
 			medianDelta: deltas.length % 2 ? deltas[mid] : (deltas[mid - 1] + deltas[mid]) / 2,
@@ -256,7 +263,67 @@
 		return messages[name] || '카메라를 열지 못했습니다. 권한과 장치 상태를 확인하세요.';
 	}
 
-	const api = { evaluate, browserVerificationState, evaluatePadEvidence, assessThresholdReadiness, computeErrorRates, summarizeAlignmentEffect, evaluatePadSamples, explainHumanDistance, summarizeScoreDistribution, inspectFace, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage };
+	// Crop strategies for hairstyle-robustness experiments (measurement only, never a verdict path).
+	// 'detector' keeps the detector box; 'face_core' trims hair-line/side-hair margins from the box.
+	const CROP_STRATEGIES = {
+		detector: { x: 0, y: 0, w: 1, h: 1 },
+		face_core: { x: 0.12, y: 0.18, w: 0.76, h: 0.74 },
+	};
+	function cropRegion(box, imageWidth, imageHeight, strategy = 'face_core') {
+		const f = CROP_STRATEGIES[strategy];
+		if (!f || !Array.isArray(box) || box.length < 4 || box.some((v) => !Number.isFinite(v))) return undefined;
+		if (!(imageWidth > 0) || !(imageHeight > 0) || !(box[2] > 0) || !(box[3] > 0)) return undefined;
+		const x = Math.max(0, box[0] + box[2] * f.x);
+		const y = Math.max(0, box[1] + box[3] * f.y);
+		const w = Math.min(imageWidth - x, box[2] * f.w);
+		const h = Math.min(imageHeight - y, box[3] * f.h);
+		if (!(w >= 16) || !(h >= 16)) return undefined;
+		return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+	}
+
+	// Descriptive per-scenario/per-strategy distance stats for hairstyle-change evaluation.
+	// Never derives a threshold; reportable only with >= minPerScenario pairs per scenario.
+	const HAIR_SCENARIOS = ['identical', 'same_short_vs_long', 'same_tied', 'same_other_photo', 'other_person', 'phone_screen'];
+	function summarizeHairScenarios(rows, minPerScenario = 30) {
+		const buckets = {};
+		for (const r of Array.isArray(rows) ? rows : []) {
+			if (!HAIR_SCENARIOS.includes(r?.scenario) || typeof r?.strategy !== 'string' || !Number.isFinite(r?.distance) || r.distance < 0) continue;
+			((buckets[r.strategy] ||= {})[r.scenario] ||= []).push(r.distance);
+		}
+		const strategies = {};
+		let reportable = Object.keys(buckets).length > 0;
+		for (const [strategy, scenarios] of Object.entries(buckets)) {
+			strategies[strategy] = {};
+			for (const [scenario, values] of Object.entries(scenarios)) {
+				const sorted = [...values].sort((a, b) => a - b);
+				const m = sorted.length >> 1;
+				strategies[strategy][scenario] = {
+					count: sorted.length,
+					min: sorted[0],
+					median: sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2,
+					max: sorted[sorted.length - 1],
+				};
+				if (sorted.length < minPerScenario) reportable = false;
+			}
+		}
+		return { strategies, missingScenarios: HAIR_SCENARIOS.filter((sc) => !Object.values(strategies).some((st) => st[sc])), reportable, recommendedThreshold: null, conclusion: 'descriptive_only' };
+	}
+
+	// Checks that a processing change did not make attack presentations (phone/print/replay)
+	// more acceptable as live. Uses the same PAD threshold for both runs.
+	function comparePadAcceptance(before, after, threshold) {
+		const a = evaluatePadSamples(before, threshold);
+		const b = evaluatePadSamples(after, threshold);
+		const types = {};
+		for (const key of Object.keys(b.classes)) {
+			if (key === 'bona_fide') continue;
+			const prev = a.classes[key]?.acceptedAsLive ?? 0;
+			types[key] = { before: prev, after: b.classes[key].acceptedAsLive, worsened: b.classes[key].acceptedAsLive > prev, count: b.classes[key].count };
+		}
+		return { types, anyWorsened: Object.values(types).some((t) => t.worsened), reportable: a.reportable && b.reportable };
+	}
+
+	const api = { cropRegion, CROP_STRATEGIES, summarizeHairScenarios, comparePadAcceptance, evaluate, browserVerificationState, evaluatePadEvidence, assessThresholdReadiness, computeErrorRates, summarizeAlignmentEffect, evaluatePadSamples, explainHumanDistance, summarizeScoreDistribution, inspectFace, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage };
 	root.ExamFaceSimilarity = api;
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(globalThis);

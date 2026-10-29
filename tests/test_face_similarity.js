@@ -276,3 +276,55 @@ test('recorded PAD cases: no threshold separates them and nothing is reportable'
 	assert.equal(strict.classes.phone_screen.acceptedAsLive, 1);
 	assert.equal(strict.classes.bona_fide.acceptedAsLive, 0);
 });
+
+test('cropRegion trims hair margins and rejects invalid input', () => {
+	const sim = require('../face_similarity.js');
+	const core = sim.cropRegion([100, 100, 200, 250], 640, 480, 'face_core');
+	assert.ok(core.w < 200 && core.h < 250 && core.x > 100 && core.y > 100);
+	assert.deepEqual(sim.cropRegion([100, 100, 200, 250], 640, 480, 'detector'), { x: 100, y: 100, w: 200, h: 250 });
+	assert.equal(sim.cropRegion([600, 400, 200, 250], 640, 480, 'face_core')?.w <= 640, true);
+	for (const bad of [undefined, [1, 2], [NaN, 0, 10, 10], [0, 0, 0, 10]]) assert.equal(sim.cropRegion(bad, 640, 480), undefined);
+	assert.equal(sim.cropRegion([0, 0, 10, 10], 640, 480), undefined);
+	assert.equal(sim.cropRegion([0, 0, 100, 100], 640, 480, 'unknown'), undefined);
+});
+
+test('hair scenario summary is descriptive only and never recommends a threshold', () => {
+	const sim = require('../face_similarity.js');
+	const rows = [
+		{ scenario: 'identical', strategy: 'baseline', distance: 0 },
+		{ scenario: 'same_short_vs_long', strategy: 'baseline', distance: 2700 },
+		{ scenario: 'same_short_vs_long', strategy: 'aligned', distance: 2500 },
+		{ scenario: 'same_tied', strategy: 'baseline', distance: 2600 },
+		{ scenario: 'other_person', strategy: 'baseline', distance: 3400 },
+		{ scenario: 'phone_screen', strategy: 'baseline', distance: 2000 },
+		{ scenario: 'bogus', strategy: 'baseline', distance: 1 },
+		{ scenario: 'identical', strategy: 'baseline', distance: -5 },
+	];
+	const out = sim.summarizeHairScenarios(rows);
+	assert.equal(out.strategies.baseline.identical.count, 1);
+	assert.equal(out.strategies.baseline.identical.max, 0);
+	assert.equal(out.reportable, false);
+	assert.equal(out.recommendedThreshold, null);
+	assert.deepEqual(out.missingScenarios, ['same_other_photo']);
+});
+
+test('PAD acceptance comparison flags any worsening for attack types', () => {
+	const sim = require('../face_similarity.js');
+	const mk = (scores, type) => scores.map((score) => ({ score, truth: 'attack', attack_type: type }));
+	const before = [...mk([0.2, 0.3], 'phone_screen'), ...mk([0.1], 'printed_photo')];
+	assert.equal(sim.comparePadAcceptance(before, before, 0.5).anyWorsened, false);
+	const worse = [...mk([0.7, 0.3], 'phone_screen'), ...mk([0.1], 'printed_photo')];
+	const cmp = sim.comparePadAcceptance(before, worse, 0.5);
+	assert.equal(cmp.anyWorsened, true);
+	assert.equal(cmp.types.phone_screen.worsened, true);
+	assert.equal(cmp.types.printed_photo.worsened, false);
+	assert.equal(cmp.reportable, false);
+});
+
+test('alignment effect reports median baseline and aligned distances', () => {
+	const sim = require('../face_similarity.js');
+	const out = sim.summarizeAlignmentEffect([{ baseline: 2700, aligned: 2500 }, { baseline: 2800, aligned: 2900 }, { baseline: 2600, aligned: 2400 }]);
+	assert.equal(out.medianBaseline, 2700);
+	assert.equal(out.medianAligned, 2500);
+	assert.equal(out.conclusion, 'descriptive_only');
+});

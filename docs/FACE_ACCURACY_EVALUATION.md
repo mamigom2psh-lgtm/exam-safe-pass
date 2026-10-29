@@ -16,3 +16,10 @@ NODE_PATH=<@tensorflow/tfjs-{core,converter,backend-wasm,backend-cpu}, jpeg-js, 
 - 오류율은 클래스당 30개 미만이면 `reportable:false`, `recommendedThreshold`는 항상 null. 컷오프 격자는 탐색용이며 권고값이 아닙니다.
 - 이 도구용 의존성은 저장소 manifest에 추가하지 않았습니다(임시 설치).
 - 현재 확정 가능한 성능·임계값: 없음. 자동 승인 임계값은 설정하지 않습니다.
+
+## 헤어스타일 변화 실험 (측정 전용)
+- 전략: `baseline`(검출 box), `aligned`(Facemesh 정렬), `core`(얼굴 중심부 crop, 머리카락·배경 영향 감소 실험). 모두 진단 화면 표시용이며 판정·서버 전송·PAD에는 쓰이지 않습니다.
+- 오프라인 도구 파일명 태그: `이름__short|long|tied|phone.jpg` → 시나리오(same_short_vs_long, same_tied, phone_screen) 집계. 데이터셋은 저장소 밖에 두어야 합니다.
+- 로컬 사진 3장 스모크 결과(표본 부족, 결론 불가): 동일인 baseline 558 / aligned 566 / core 723, 타인 baseline 1732~1976 / core 1557~1759. 정렬·crop이 헤어스타일 강건성을 개선한다는 증거는 없습니다.
+- 현장 기록(50~53%, 휴대폰 80%, 타인 41%)은 확률이 아닌 참고 유사도이며, 휴대폰 화면 사진이 더 높게 나온 것은 실재성 근거가 아닙니다.
+- 단발 등록 vs 긴 머리/묶음 라벨 표본이 시나리오당 30개 이상 모이기 전에는 임계값·성능을 확정하지 않습니다.

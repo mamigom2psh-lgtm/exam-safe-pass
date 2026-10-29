@@ -2,6 +2,8 @@
 // Offline same/other-person evaluation of Human FaceRes, baseline vs Facemesh-aligned.
 // Usage: NODE_PATH=<dir with @tensorflow/* + jpeg-js + pngjs> node tools/evaluate_faces.js <dataset-dir> [report.json]
 // Dataset layout (keep OUTSIDE git): <dataset-dir>/<person>/<image>.jpg|png
+// Optional scenario tags in file names: name__short.jpg, __long, __tied, __phone (hairstyle/phone-screen scenarios).
+// Modes: baseline, aligned (Facemesh+rotation), core (hair-trimmed face-core crop re-embedded).
 // Output: distances and error-rate summary only. Images and embeddings are never written.
 const fs = require('fs');
 const path = require('path');
@@ -55,17 +57,36 @@ async function main() {
 		body: { enabled: false }, hand: { enabled: false }, gesture: { enabled: false }, object: { enabled: false }, segmentation: { enabled: false },
 	});
 	await human.load();
-	const embed = async (file, aligned) => {
+	const toRgb = (img) => {
+		const rgb = new Uint8Array(img.width * img.height * 3);
+		for (let i = 0, o = 0; i < img.data.length; i += 4) { rgb[o++] = img.data[i]; rgb[o++] = img.data[i + 1]; rgb[o++] = img.data[i + 2]; }
+		return rgb;
+	};
+	const detectRgb = async (rgb, width, height) => {
+		const tensor = human.tf.tensor3d(rgb, [height, width, 3], 'int32');
+		const result = await human.detect(tensor);
+		tensor.dispose();
+		return result.face.length === 1 ? result.face[0] : null;
+	};
+	const embed = async (file, mode) => {
+		const aligned = mode === 'aligned';
 		human.config.face.mesh.enabled = aligned;
 		human.config.face.detector.rotation = aligned;
 		const img = decode(file);
-		const rgb = new Uint8Array(img.width * img.height * 3);
-		for (let i = 0, o = 0; i < img.data.length; i += 4) { rgb[o++] = img.data[i]; rgb[o++] = img.data[i + 1]; rgb[o++] = img.data[i + 2]; }
-		const tensor = human.tf.tensor3d(rgb, [img.height, img.width, 3], 'int32');
-		const result = await human.detect(tensor);
-		tensor.dispose();
-		return result.face.length === 1 ? Array.from(result.face[0].embedding) : null;
+		const rgb = toRgb(img);
+		const face = await detectRgb(rgb, img.width, img.height);
+		if (!face || mode !== 'core') return face ? Array.from(face.embedding) : null;
+		const region = sim.cropRegion(face.box, img.width, img.height, 'face_core');
+		if (!region) return null;
+		const crop = new Uint8Array(region.w * region.h * 3);
+		for (let y = 0; y < region.h; y++) {
+			const from = ((region.y + y) * img.width + region.x) * 3;
+			crop.set(rgb.subarray(from, from + region.w * 3), y * region.w * 3);
+		}
+		const coreFace = await detectRgb(crop, region.w, region.h);
+		return coreFace ? Array.from(coreFace.embedding) : null;
 	};
+	const tagOf = (file) => (path.basename(file).match(/__(short|long|tied|phone)\./i) || [])[1]?.toLowerCase();
 
 	const people = fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isDirectory());
 	const files = [];
@@ -74,21 +95,36 @@ async function main() {
 			files.push({ person, file: path.join(dir, person, name) });
 		}
 	}
-	const vectors = { baseline: [], aligned: [] };
+	const MODES = ['baseline', 'aligned', 'core'];
+	const vectors = { baseline: [], aligned: [], core: [] };
 	let undetected = 0;
 	for (const item of files) {
-		for (const mode of ['baseline', 'aligned']) vectors[mode].push(await embed(item.file, mode === 'aligned'));
+		for (const mode of MODES) vectors[mode].push(await embed(item.file, mode));
 		if (!vectors.baseline.at(-1) || !vectors.aligned.at(-1)) undetected++;
 	}
-	const groups = { baseline: { same: [], other: [], self: [] }, aligned: { same: [], other: [], self: [] } };
+	const groups = { baseline: { same: [], other: [], self: [] }, aligned: { same: [], other: [], self: [] }, core: { same: [], other: [], self: [] } };
+	const scenarioRows = [];
+	const scenarioOf = (a, b) => {
+		const tags = [tagOf(a.file), tagOf(b.file)];
+		if (tags.includes('phone')) return 'phone_screen';
+		if (a.person !== b.person) return 'other_person';
+		if (tags.includes('short') && tags.includes('long')) return 'same_short_vs_long';
+		if (tags.includes('tied')) return 'same_tied';
+		return 'same_other_photo';
+	};
 	const pairs = [];
-	for (const mode of ['baseline', 'aligned']) {
+	for (const mode of MODES) {
 		for (let i = 0; i < files.length; i++) {
-			if (vectors[mode][i]) groups[mode].self.push(human.match.distance(vectors[mode][i], vectors[mode][i]));
+			if (vectors[mode][i]) {
+				const self = human.match.distance(vectors[mode][i], vectors[mode][i]);
+				groups[mode].self.push(self);
+				scenarioRows.push({ scenario: 'identical', strategy: mode, distance: self });
+			}
 			for (let j = i + 1; j < files.length; j++) {
 				if (!vectors[mode][i] || !vectors[mode][j]) continue;
 				const d = human.match.distance(vectors[mode][i], vectors[mode][j]);
 				(files[i].person === files[j].person ? groups[mode].same : groups[mode].other).push(d);
+				scenarioRows.push({ scenario: scenarioOf(files[i], files[j]), strategy: mode, distance: d });
 			}
 		}
 	}
@@ -102,8 +138,9 @@ async function main() {
 		humanVersion: human.version, images: files.length, people: people.length, undetectedImages: undetected,
 		modes: {},
 		alignmentEffect: sim.summarizeAlignmentEffect(pairs),
+		hairScenarios: sim.summarizeHairScenarios(scenarioRows),
 	};
-	for (const mode of ['baseline', 'aligned']) {
+	for (const mode of MODES) {
 		report.modes[mode] = {
 			distribution: sim.summarizeScoreDistribution(groups[mode]),
 			errorRates: sim.computeErrorRates(groups[mode], CUTOFFS),

@@ -87,6 +87,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 .skip-link{position:absolute;left:-999px}.skip-link:focus{left:12px;top:8px;background:#fff;color:#000;padding:10px;z-index:10}
 @media print{.a11y-bar,.skip-link{display:none!important}}
 .flow-steps{display:flex;gap:6px;flex-wrap:wrap;padding:0;margin:0 0 12px;list-style:none;font-size:15px}.flow-steps li{padding:4px 10px;border:2px solid #9db0c4;border-radius:999px}.flow-steps li.done{border-color:#0b6b3a;font-weight:700}.flow-steps li.current{background:#0b5cad;color:#fff;border-color:#0b5cad;font-weight:700}@media print{.flow-steps{display:none}}
+.next-step{border:4px solid #174f9d;background:#eaf2ff;border-radius:14px;padding:14px;margin:14px 0}.next-step button:first-child{font-size:24px;min-height:76px}.sim-box{border:3px dashed #8c2635;background:#fff5f6;border-radius:14px;padding:12px;margin:14px 0}.sim-box input{min-height:48px;font-size:18px;padding:6px 10px}
 </style>
 </head>
 <body>
@@ -158,7 +159,11 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <dt>촬영 프레임 얼굴 box</dt><dd id="diagLiveBox">확인 전</dd>
 <dt>촬영 프레임 FaceRes</dt><dd id="diagLiveEmbedding">확인 전</dd>
 <dt>임베딩 전처리</dt><dd id="diagAlign">mesh·회전 정렬 꺼짐 (Human 문서 권장과 다름)</dd>
-<dt>정렬 전/후 거리 (Facemesh, 참고)</dt><dd id="diagAlignment">확인 전</dd>
+<dt>Facemesh 모델 로딩 상태</dt><dd id="diagFacemesh">로딩 전</dd>
+<dt>얼굴 정렬 적용 여부</dt><dd id="diagAlignApplied">적용 안 함 (판정 경로는 정렬 없음)</dd>
+<dt>정렬 전/후 원시 거리·참고 유사도 (Facemesh, 참고)</dt><dd id="diagAlignment">확인 전</dd>
+<dt>얼굴 중심 크롭 실험 (머리카락 영향 감소, 참고)</dt><dd id="diagCrop">확인 전</dd>
+<dt>판정 불가 사유</dt><dd id="diagReason">분석 전</dd>
 <dt>등록 사진 재검출 자기 비교</dt><dd id="diagSelf">확인 전</dd>
 <dt>프레임별 거리 분포 (등록 vs 8프레임)</dt><dd id="diagDist">확인 전</dd>
 <dt>세션 수집 분포 (메모리 전용)</dt><dd id="diagSession">기록 없음</dd>
@@ -176,7 +181,20 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 </table>
 </details>
 <p class="small">얼굴 유사도와 모델 점수는 브라우저에서만 처리되며 서버에 전송·저장되지 않습니다. 서버는 실제 본인 여부나 실재성을 검증하지 않습니다. 출력은 별도 DEMO 모의 절차와 분리된 PoC 결과이며 실제 입실 기록 또는 운영 QR 발급 근거가 아닙니다.</p>
-<div class="row"><button id="retryFaceCapture" class="secondary" type="button">다시 촬영</button><button id="completeSelfDemo" type="button" hidden>DEMO 모의 성공으로 진행</button><button id="faceHelp" class="secondary" type="button">감독관 확인 요청</button></div>
+<div class="next-step" id="supervisorPanel">
+<p class="lead"><strong>다음 단계 · 감독관 확인</strong><br>얼굴 분석 결과는 참고용이며 판정 불가입니다. 감독관이 신분증과 얼굴을 직접 대조해 서버에서 승인하면 DEMO QR이 발급됩니다.</p>
+<div class="row"><button id="faceHelp" type="button">감독관 확인 요청 (QR 발급 단계로)</button><button id="retryFaceCapture" class="secondary" type="button">다시 촬영</button></div>
+</div>
+<button id="completeSelfDemo" type="button" hidden>DEMO 모의 성공으로 진행</button>
+<div class="sim-box" id="simPanel">
+<p><strong>자동 발급 시연 (DEMO · 사전 설정 시뮬레이션)</strong><br>위 얼굴 분석과 <u>무관한</u> 사전 설정 시연입니다. 실제 얼굴 인증 결과가 아니며 서버가 감독관(DEMO) 권한을 확인한 뒤 DEMO QR을 발급합니다. 공모전 시제품 · 실제 입실 불가.</p>
+<div class="row"><button id="autoIssueDemo" class="secondary" type="button">자동 발급 시연(DEMO)</button></div>
+<form id="simLoginForm" hidden class="row">
+<label for="simUser">감독관(DEMO) 계정</label><input id="simUser" autocomplete="username" value="proctor-demo">
+<label for="simPass">비밀번호</label><input id="simPass" type="password" autocomplete="current-password">
+<button class="secondary" type="submit">감독관 로그인 후 발급</button>
+</form>
+</div>
 <div class="status" id="selfResultStatus" aria-live="polite" aria-atomic="true"></div>
 </section>
 
@@ -284,6 +302,10 @@ const antiSpoofDiagnostics={
 	distance:'확인 전',
 	align:'기본 경로: 정렬 꺼짐 · 참고 측정: Facemesh+회전 정렬(동일 적용)',
 		alignment:'확인 전',
+	facemesh:'로딩 전 (비교 시작 시 로딩)',
+	alignApplied:'적용 안 함 (판정 경로는 정렬 없음)',
+	crop:'확인 전',
+	reason:'분석 전',
 	selfCompare:'확인 전',
 	distribution:'확인 전',
 	formula:'확인 전',
@@ -322,6 +344,10 @@ function updateAntiSpoofDiagnostics(changes){
 		distance:'diagDistance',
 		align:'diagAlign',
 		alignment:'diagAlignment',
+		facemesh:'diagFacemesh',
+		alignApplied:'diagAlignApplied',
+		crop:'diagCrop',
+		reason:'diagReason',
 		selfCompare:'diagSelf',
 		distribution:'diagDist',
 		formula:'diagFormula',
@@ -524,9 +550,11 @@ async function ensureAlignModel(){
 			const meshLoaded=stats.find(info=>info.name==='facemesh')?.loaded;
 			if(!meshLoaded)throw new Error('facemesh 모델이 로드되지 않았습니다.');
 			alignModel=candidate;
+			updateAntiSpoofDiagnostics({facemesh:'로딩 완료 (공식 3.3.6 · 별도 인스턴스)'});
 			return candidate;
 		}).catch(error=>{
 			alignLoadError=error instanceof Error?error.message:'정렬 모델 로딩 오류';
+			updateAntiSpoofDiagnostics({facemesh:`로딩 실패 · ${alignLoadError} (기본 참고 분석으로 전환)`});
 			throw new Error(alignLoadError);
 		});
 	}
@@ -535,6 +563,22 @@ async function ensureAlignModel(){
 async function detectAligned(input,deadline){
 	const model=await awaitAnalysisStep(ensureAlignModel(),deadline-Date.now());
 	return {model,result:await awaitAnalysisStep(model.detect(input),deadline-Date.now())};
+}
+// Experiment only: re-embeds the hair-trimmed face core of both images with the baseline model.
+async function embedFaceCore(model,source,face,width,height,deadline,results){
+	const region=ExamFaceSimilarity.cropRegion(face?.box,width,height,'face_core');
+	if(!region)return undefined;
+	const canvas=document.createElement('canvas');
+	canvas.width=region.w;canvas.height=region.h;
+	canvas.getContext('2d').drawImage(source,region.x,region.y,region.w,region.h,0,0,region.w,region.h);
+	const result=await awaitAnalysisStep(model.detect(canvas),deadline-Date.now());
+	results.push(result);
+	canvas.width=0;canvas.height=0;
+	return result?.face?.length===1?result.face[0]:undefined;
+}
+function describeDistance(distance){
+	const info=ExamFaceSimilarity.explainHumanDistance(distance);
+	return info?`${distance.toFixed(2)} (참고 유사도 ${(info.similarity*100).toFixed(0)}% · 확률 아님)`:'확인 불가';
 }
 async function ensureFaceModel(){
 	if(currentMode!=='self_demo')throw new Error('안티스푸핑 진단은 셀프 DEMO에서만 사용할 수 있습니다.');
@@ -748,9 +792,9 @@ function displayQr(result,isDemo){
 	$('qrNotice').hidden=true;
 	$('qrStatus').hidden=true;
 	$('qrStepCount').textContent=isDemo?'4단계':'';
-	$('qrLabel').textContent=isDemo?'DEMO 전용 QR · 실제 입실 불가':'감독관 승인 완료 · 모의 운영 QR';
+	$('qrLabel').textContent=isDemo?(result.simulation?'자동 발급 시연(DEMO · 사전 설정) · DEMO 전용 QR · 실제 입실 불가':'DEMO 전용 QR · 실제 입실 불가'):'감독관 승인 완료 · 모의 운영 QR';
 	$('qrGuidance').textContent=isDemo
-		?`DEMO QR은 발급 후 ${result.expires_in}초간 유효합니다. 실제 입실 기록이나 입실 자격을 만들지 않습니다.`
+		?`공모전 시제품 · 실제 입실 불가. DEMO QR은 발급 후 ${result.expires_in}초간 1회만 유효합니다.${result.simulation?' 이 QR은 얼굴 인증과 무관한 사전 설정 시연입니다.':''}`
 		:'QR은 발급 후 30초간 유효합니다. 실제 기관의 입실 허가가 아닙니다.';
 	image.alt=isDemo?'실제 입실에 사용할 수 없는 DEMO QR':'감독관 승인 이후 발급된 모의 운영 QR';
 	image.onload=()=>{
@@ -892,6 +936,10 @@ $('cameraContinue').onclick=async()=>{
 		distance:'확인 전',
 		align:'기본 경로: 정렬 꺼짐 · 참고 측정: Facemesh+회전 정렬(동일 적용)',
 		alignment:'확인 전',
+		facemesh:alignModel?'로딩 완료 (공식 3.3.6 · 별도 인스턴스)':alignLoadError?`로딩 실패 · ${alignLoadError} (기본 참고 분석으로 전환)`:'로딩 전 (비교 시작 시 로딩)',
+		alignApplied:'적용 안 함 (판정 경로는 정렬 없음)',
+		crop:'확인 전',
+		reason:'분석 전',
 		selfCompare:'확인 전',
 		distribution:'확인 전',
 		formula:'확인 전',
@@ -1011,9 +1059,24 @@ $('cameraContinue').onclick=async()=>{
 		const explained=ExamFaceSimilarity.explainHumanDistance(comparison.distance);
 		const dist=ExamFaceSimilarity.summarizeScoreDistribution({frames:frameDistances}).frames;
 		const alignmentSummary=ExamFaceSimilarity.summarizeAlignmentEffect(alignmentPairs);
-		updateAntiSpoofDiagnostics({alignment:alignmentSummary.count
-			?`${alignmentSummary.count}프레임 · 정렬 후 거리 개선 ${alignmentSummary.improved} / 악화 ${alignmentSummary.worsened} · 중앙 변화 ${alignmentSummary.medianDelta.toFixed(2)} (기술 통계, 판정 아님)`
-			:`측정 없음${alignmentFailure?` · ${alignmentFailure}`:''} (기본 참고 분석으로 계속 진행)`});
+		updateAntiSpoofDiagnostics({
+			alignment:alignmentSummary.count
+				?`${alignmentSummary.count}프레임 · 정렬 전 중앙 ${describeDistance(alignmentSummary.medianBaseline)} → 정렬 후 중앙 ${describeDistance(alignmentSummary.medianAligned)} · 개선 ${alignmentSummary.improved} / 악화 ${alignmentSummary.worsened} (기술 통계, 판정 아님)`
+				:`측정 없음${alignmentFailure?` · ${alignmentFailure}`:''} (기본 참고 분석으로 계속 진행)`,
+			alignApplied:alignmentSummary.count?`참고 측정에만 적용 (${alignmentSummary.count}프레임 · 등록 사진과 촬영 프레임 동일 설정)`:'적용 안 함 · 측정 실패 또는 시간 부족',
+		});
+		const liveCoreSource=detectedFaces?.length===1?detectedFaces[0]:undefined;
+		let cropText='측정 없음 (얼굴 1명 검출 필요 또는 시간 부족)';
+		if(referenceFace&&liveCoreSource&&deadline-Date.now()>4000){
+			try{
+				const refCore=await embedFaceCore(model,reference,referenceFace,reference.naturalWidth,reference.naturalHeight,deadline,results);
+				const liveCore=await embedFaceCore(model,frame,liveCoreSource,frame.width,frame.height,deadline,results);
+				cropText=refCore?.embedding?.length&&refCore.embedding.length===liveCore?.embedding?.length
+					?`일반 ${describeDistance(comparison.distance)} → 얼굴 중심 크롭 ${describeDistance(model.match.distance(refCore.embedding,liveCore.embedding))} (실험 · 판정 아님)`
+					:'크롭 후 얼굴을 다시 검출하지 못했습니다.';
+			}catch(error){cropText=`측정 실패 · ${error instanceof Error?error.message:'오류'}`}
+		}
+		updateAntiSpoofDiagnostics({crop:cropText});
 		let selfText='확인 불가';
 		if(referenceFace){
 			const again=await awaitAnalysisStep(model.detect(reference),deadline-Date.now());
@@ -1045,7 +1108,8 @@ $('cameraContinue').onclick=async()=>{
 		const browserState=ExamFaceSimilarity.browserVerificationState(comparison,liveness);
 		const stateNote=`인증 상태: ${browserState.state}(판정 불가) · 이 브라우저 결과는 verified가 될 수 없으며 감독관 확인이 필요합니다. PAD(위조 탐지) 성능은 미검증입니다.`;
 		if(comparison.status==='reference_only'){
-			setStatus('faceComparisonResult',`참고용 유사도 수치 · ${(comparison.score*100).toFixed(1)}% · 본인 여부 미확인. 검증된 판정 기준이 없어 얼굴 점수만으로 인증하거나 QR을 발급하지 않습니다. 감독관 확인을 요청하세요. ${stateNote}`,'warn');
+			updateAntiSpoofDiagnostics({reason:'검증된 판정 기준(임계값·표본)이 없어 판정 불가 · 감독관 확인 필요'});
+			setStatus('faceComparisonResult',`참고용 유사도 수치 · ${(comparison.score*100).toFixed(1)}% (동일인일 확률이 아니며 헤어스타일·조명·촬영 시점에 따라 달라질 수 있습니다) · 본인 여부 미확인. 검증된 판정 기준이 없어 얼굴 점수만으로 인증하거나 QR을 발급하지 않습니다. 감독관 확인을 요청하세요. ${stateNote}`,'warn');
 			$('completeSelfDemo').hidden=true;
 		}else{
 			const details={
@@ -1056,6 +1120,7 @@ $('cameraContinue').onclick=async()=>{
 				embedding_unavailable:'얼굴 특징값을 계산할 수 없습니다.',
 				comparison_failed:'얼굴 비교를 완료하지 못했습니다.',
 			};
+			updateAntiSpoofDiagnostics({reason:details[comparison.status]||'얼굴 비교 기능을 사용할 수 없습니다.'});
 			setStatus('faceComparisonResult',`판정 불가 · ${details[comparison.status]||'얼굴 비교 기능을 사용할 수 없습니다.'} 다시 촬영하거나 감독관 확인을 요청하세요.`,'bad');
 			$('completeSelfDemo').hidden=true;
 		}
@@ -1077,6 +1142,7 @@ $('cameraContinue').onclick=async()=>{
 			distance:'확인 불가',
 			verdict:`판정 불가 · ${reason}`,
 		});
+		updateAntiSpoofDiagnostics({reason:`분석 오류 · ${reason}`});
 		setStatus('faceComparisonResult','판정 불가 · 얼굴 비교 기능을 사용할 수 없습니다. QR은 발급되지 않았습니다. 다시 촬영하거나 감독관 확인을 요청하세요.','bad');
 		showLivenessResult({status:'liveness_unavailable'});
 		$('completeSelfDemo').hidden=true;
@@ -1141,13 +1207,51 @@ $('retryFaceCapture').onclick=()=>{
 	showScreen('selfCameraScreen');
 };
 $('faceHelp').onclick=async()=>{
+	$('faceHelp').disabled=true;
 	try{
-		const result=await api('/api/kiosk/help',{kiosk_session_id:kioskSessionId});
-		setStatus('proctorStatus',result.message,'warn');
+		const result=await api('/api/kiosk/self-demo/request-review',{kiosk_session_id:kioskSessionId});
+		$('candidateInfo').textContent=`${candidateRecord?.candidate_name||''} · ${candidateRecord?.candidate_number||''}`;
+		setStatus('proctorStatus',`${result.message} 얼굴 분석 결과만으로는 QR이 발급되지 않습니다.`,'warn');
+		clearInterval(statusTimer);
+		statusTimer=setInterval(pollStatus,1000);
 		showScreen('proctorWaitScreen');
 	}catch(error){
-		setStatus('proctorStatus',genericError(),'bad');
-		showScreen('proctorWaitScreen');
+		setStatus('selfResultStatus',`${error.message||genericError()} 인증은 완료되지 않았습니다. 다시 시도하거나 현장 직원에게 문의하세요.`,'bad');
+	}finally{
+		$('faceHelp').disabled=false;
+	}
+};
+async function runAutoIssue(){
+	$('autoIssueDemo').disabled=true;
+	try{
+		const result=await api('/api/kiosk/demo-auto-issue',{kiosk_session_id:kioskSessionId,demo_simulation:true,scenario:'preset_auto_issue'});
+		if(result.demo_only!==true||result.simulation!==true)throw new Error('invalid simulation response');
+		$('simLoginForm').hidden=true;
+		selfDemoToken=result.demo_token;
+		clearInterval(statusTimer);
+		statusTimer=setInterval(pollStatus,1000);
+		displayQr(result,true);
+	}catch(error){
+		if(/권한/.test(error.message)){
+			$('simLoginForm').hidden=false;
+			setStatus('selfResultStatus','자동 발급 시연에는 서버가 확인하는 감독관(DEMO) 로그인이 필요합니다. 계정 정보를 입력해 주세요.','warn');
+			$('simPass').focus();
+		}else{
+			setStatus('selfResultStatus',`${error.message||genericError()} QR은 발급되지 않았습니다.`,'bad');
+		}
+	}finally{
+		$('autoIssueDemo').disabled=false;
+	}
+}
+$('autoIssueDemo').onclick=runAutoIssue;
+$('simLoginForm').onsubmit=async event=>{
+	event.preventDefault();
+	try{
+		await api('/api/login',{role:'proctor',username:$('simUser').value,password:$('simPass').value});
+		$('simPass').value='';
+		await runAutoIssue();
+	}catch(error){
+		setStatus('selfResultStatus','감독관 로그인에 실패했습니다. QR은 발급되지 않았습니다.','bad');
 	}
 };
 $('showQrChoice').onclick=()=>issueDemoTicket('screen');
