@@ -345,6 +345,8 @@ class ServerScenarios(unittest.TestCase):
         env.update(
             {
                 "EXAM_SAFE_DB": str(cls.db_path),
+                "EXAM_SAFE_PHOTO_DIR": str(Path(cls.temp_dir.name) / "demo_photos"),
+                "EXAM_SAFE_LEGACY_IMAGE_DIR": str(Path(cls.temp_dir.name) / "no_legacy_images"),
                 "EXAM_SAFE_HOST": "127.0.0.1",
                 "EXAM_SAFE_PORT": str(cls.port),
                 "EXAM_SAFE_PROCTOR_KEY": PROCTOR_KEY,
@@ -462,7 +464,7 @@ class ServerScenarios(unittest.TestCase):
         status, candidate = self.api.lookup_kiosk_candidate(created["kiosk_session_id"])
         self.assertEqual(status, 200, candidate)
         self.assertEqual(candidate["candidate_number"], "2026-0012")
-        self.assertEqual(candidate["registered_photo_url"], "/images/2026-0012-registration.jpg")
+        self.assertIsNone(candidate["registered_photo_url"])  # no photo uploaded in the test registry; never a public /images/ URL
         self.assertEqual(candidate["status"], "awaiting_proctor")
         self.assertNotIn("authenticated", candidate)
         status, missing = self.api.lookup_kiosk_candidate(
@@ -1062,7 +1064,7 @@ class ServerScenarios(unittest.TestCase):
             "GET", "/api/kiosk/requests", role="proctor", key=PROCTOR_KEY
         )
         self.assertEqual(status, 200)
-        self.assertEqual(requests["requests"][0]["photo_url"], "/images/2026-0012-registration.jpg")
+        self.assertIsNone(requests["requests"][0]["photo_url"])
         status, _ = self.api.kiosk_review(session_id, role="supervisor", key=SUPERVISOR_KEY)
         self.assertEqual(status, 403)
         status, response = self.api.kiosk_review(session_id)

@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>DEMO 응시자 관리 · 시험장 안심패스 플러스</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Noto Sans KR",sans-serif;font-size:18px;background:#f3f6fa;color:#14202e}
+header{background:#12355b;color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:24px}
+main{max-width:1100px;margin:0 auto;padding:18px}
+section{background:#fff;border:1px solid #c5d0dc;border-radius:12px;padding:18px;margin-bottom:18px}
+h2{margin:0 0 12px;font-size:20px}
+label{display:block;font-weight:700;margin:12px 0 6px}
+input,select,button{font:inherit;padding:10px 12px;border-radius:8px;border:2px solid #71849a;min-height:44px}
+input,select{width:100%;background:#fff}
+button{background:#12355b;color:#fff;border-color:#12355b;cursor:pointer;margin:4px 4px 4px 0}
+button.secondary{background:#fff;color:#12355b}
+button.danger{background:#a11d1d;border-color:#a11d1d}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #f5a623;outline-offset:2px}
+.notice{background:#fff7dd;border:1px solid #e2b93b;border-radius:8px;padding:10px 14px;margin:10px 0}
+.status{margin:10px 0;padding:10px 14px;border-radius:8px;background:#eef3f8}
+.status.bad{background:#fde8e8;color:#7a1212}.status.good{background:#e5f6e8;color:#14531f}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 16px}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{border-bottom:1px solid #d6dee8;padding:8px;text-align:left;vertical-align:middle}
+.badge{padding:2px 8px;border-radius:999px;background:#e5f6e8}.badge.off{background:#eee;color:#555}
+.thumb{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid #aab}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>DEMO 응시자 관리 (관리자 전용)</h1></header>
+<main>
+<div class="notice" role="note">이 화면의 모든 응시자·시험 정보는 <strong>시연용 가상 데이터</strong>입니다. 가상 코드에 실제 주민등록번호(일부 포함)를 입력하지 마세요. 시험 목록은 실제 시험 운영기관과 연동된 데이터가 아닙니다. 등록 사진은 사용자가 직접 업로드한 파일만 사용하며 Git에 올라가지 않습니다.</div>
+<div class="status" id="status" role="status" aria-live="polite" hidden></div>
+
+<section id="loginSection">
+<h2>관리자 로그인</h2>
+<p>서버가 관리자 권한을 확인합니다. 로그인하지 않으면 데이터를 조회할 수 없습니다.</p>
+<form id="loginForm" class="grid">
+<div><label for="adminUser">DEMO 관리자 계정</label><input id="adminUser" autocomplete="username"></div>
+<div><label for="adminPass">비밀번호</label><input id="adminPass" type="password" autocomplete="current-password"></div>
+<div><button type="submit">로그인</button></div>
+</form>
+</section>
+
+<div id="adminArea" hidden>
+<section>
+<h2>응시자 목록</h2>
+<button id="seedButton" type="button" class="secondary">가상 테스트 응시자 5명 등록 (사진은 배정하지 않음)</button>
+<button id="resetButton" type="button" class="danger">테스트 데이터 초기화…</button>
+<div class="table-wrap"><table aria-label="DEMO 응시자 목록"><thead><tr>
+<th>수험번호</th><th>이름</th><th>시험 종류</th><th>시험명</th><th>급수·등급</th><th>회차</th><th>가상 코드</th><th>사진</th><th>상태</th><th>관리</th>
+</tr></thead><tbody id="candidateRows"></tbody></table></div>
+</section>
+
+<section>
+<h2 id="formTitle">응시자 추가</h2>
+<form id="candidateForm" novalidate>
+<input type="hidden" id="editingId">
+<div class="grid">
+<div><label for="fName">이름</label><input id="fName" maxlength="30"></div>
+<div><label for="fNumber">수험번호 (YYYY-NNNN)</label><input id="fNumber" maxlength="9" placeholder="2026-0017"></div>
+<div><label for="fCode">가상 DEMO 생년월일·구분 코드 (YYMMDD-N)</label><input id="fCode" maxlength="8" autocomplete="off" placeholder="수정 시 비우면 유지"></div>
+<div><label for="fRound">시험 회차</label><input id="fRound" maxlength="30" value="2026년 DEMO 1회"></div>
+<div><label for="fKind">시험 종류</label><select id="fKind"></select></div>
+<div><label for="fExam">시험명</label><select id="fExam"></select></div>
+<div><label for="fGrade">급수·등급</label><select id="fGrade"></select></div>
+</div>
+<p class="notice">가상 코드는 DEMO 전용이며 실제 개인 정보로 사용하지 않습니다.</p>
+<button type="submit" id="saveButton">저장</button>
+<button type="button" class="secondary" id="cancelEdit">새 응시자 입력으로 전환</button>
+</form>
+</section>
+
+<section>
+<h2>등록 사진 업로드 (JPG·JPEG·PNG, 5MB 이하)</h2>
+<p>응시자 목록에서 “사진”을 눌러 파일을 선택하세요. 형식·크기·해상도는 서버가 다시 검사하며, 교체 전 사진은 서버의 <code>demo_photos/backup</code>에 보관됩니다.</p>
+<input type="file" id="photoInput" accept="image/jpeg,image/png" hidden>
+<img id="photoPreview" alt="등록 사진 미리보기" hidden style="max-width:240px;border-radius:8px;border:1px solid #aab">
+</section>
+
+<section>
+<h2>DEMO 시험 목록 관리</h2>
+<form id="examForm" class="grid" novalidate>
+<input type="hidden" id="examEditId">
+<div><label for="eKind">시험 종류</label><input id="eKind" maxlength="30"></div>
+<div><label for="eName">시험명</label><input id="eName" maxlength="40"></div>
+<div><label for="eGrades">급수·등급 (쉼표로 구분)</label><input id="eGrades" placeholder="1급, 2급 또는 해당 없음"></div>
+<div><button type="submit">시험 추가/수정</button></div>
+</form>
+<ul id="examList"></ul>
+</section>
+</div>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let csrf='', exams=[], candidates=[], photoTarget='';
+function say(text,kind){const box=$('status');box.hidden=false;box.className=`status ${kind||''}`;box.textContent=text}
+async function call(method,path,body,raw){
+	const headers={};
+	if(method!=='GET')headers['X-CSRF-Token']=csrf;
+	let payload;
+	if(raw){payload=raw;headers['Content-Type']='application/octet-stream'}
+	else if(body!==undefined){payload=JSON.stringify(body);headers['Content-Type']='application/json'}
+	const response=await fetch(path,{method,headers,body:payload,cache:'no-store',credentials:'same-origin'});
+	const data=await response.json().catch(()=>({}));
+	if(!response.ok){const error=new Error(data.error||`요청이 실패했습니다 (${response.status})`);error.status=response.status;throw error}
+	return data;
+}
+function cell(row,text){const td=document.createElement('td');td.textContent=text;row.append(td);return td}
+function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.onclick=handler;return b}
+function fillSelect(select,values,selected){
+	select.textContent='';
+	for(const [value,label] of values){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o)}
+	if(selected!==undefined)select.value=selected;
+}
+function syncKind(){
+	const kinds=[...new Set(exams.map(e=>e.kind))];
+	const current=$('fKind').value;
+	fillSelect($('fKind'),kinds.map(k=>[k,k]),kinds.includes(current)?current:kinds[0]);
+	syncExam();
+}
+function syncExam(selected){
+	const list=exams.filter(e=>e.kind===$('fKind').value);
+	fillSelect($('fExam'),list.map(e=>[e.id,e.name]),selected&&list.some(e=>e.id===selected)?selected:list[0]?.id);
+	syncGrade();
+}
+function syncGrade(selected){
+	const exam=exams.find(e=>e.id===$('fExam').value);
+	fillSelect($('fGrade'),(exam?.grades||[]).map(g=>[g,g]),selected&&exam?.grades.includes(selected)?selected:exam?.default_grade);
+}
+$('fKind').onchange=()=>syncExam();
+$('fExam').onchange=()=>syncGrade();
+function render(){
+	const body=$('candidateRows');
+	body.textContent='';
+	for(const c of candidates){
+		const row=document.createElement('tr');
+		cell(row,c.number);cell(row,c.name);cell(row,c.exam_kind);cell(row,c.exam_name);cell(row,c.grade);cell(row,c.round);cell(row,c.virtual_code_masked||'-');
+		const photo=document.createElement('td');
+		if(c.has_photo){const img=document.createElement('img');img.className='thumb';img.alt=`${c.name} 등록 사진`;img.src=`/api/candidate-photo/${encodeURIComponent(c.id)}`;photo.append(img)}
+		else photo.textContent='없음';
+		row.append(photo);
+		const state=cell(row,'');const badge=document.createElement('span');badge.className=`badge${c.active?'':' off'}`;badge.textContent=c.active?'활성':'비활성';state.append(badge);
+		const actions=document.createElement('td');
+		actions.append(
+			button('수정',()=>edit(c),'secondary'),
+			button('사진',()=>{photoTarget=c.id;$('photoInput').click()},'secondary'),
+			button(c.active?'비활성화':'활성화',()=>act(()=>call('PUT',`/api/admin/demo-candidates/${c.id}`,{active:!c.active}),'상태를 변경했습니다.'),'secondary'),
+			button('삭제',()=>remove(c),'danger'));
+		row.append(actions);
+		body.append(row);
+	}
+	const list=$('examList');list.textContent='';
+	for(const e of exams){const li=document.createElement('li');li.textContent=`${e.kind} · ${e.name} · ${e.grades.join(', ')} `;li.append(button('수정',()=>{$('examEditId').value=e.id;$('eKind').value=e.kind;$('eName').value=e.name;$('eGrades').value=e.grades.join(', ')},'secondary'));list.append(li)}
+	syncKind();
+}
+async function refresh(){
+	const data=await call('GET','/api/admin/demo-candidates');
+	candidates=data.candidates;exams=data.exams;render();
+}
+async function act(fn,okText){
+	try{await fn();await refresh();say(okText,'good')}catch(error){say(error.message,'bad')}
+}
+function edit(c){
+	$('editingId').value=c.id;$('formTitle').textContent=`응시자 수정 (${c.number})`;
+	$('fName').value=c.name;$('fNumber').value=c.number;$('fCode').value='';$('fRound').value=c.round;
+	const exam=exams.find(e=>e.id===c.exam_ref);
+	if(exam){$('fKind').value=exam.kind;syncExam(exam.id);syncGrade(c.grade)}
+	$('fName').focus();
+}
+function resetForm(){$('editingId').value='';$('formTitle').textContent='응시자 추가';$('candidateForm').reset();syncKind()}
+$('cancelEdit').onclick=resetForm;
+$('candidateForm').onsubmit=async event=>{
+	event.preventDefault();
+	const body={name:$('fName').value,number:$('fNumber').value,round:$('fRound').value,exam_ref:$('fExam').value,grade:$('fGrade').value};
+	const editing=$('editingId').value;
+	if($('fCode').value||!editing)body.virtual_code=$('fCode').value;
+	await act(()=>editing?call('PUT',`/api/admin/demo-candidates/${editing}`,body):call('POST','/api/admin/demo-candidates',body),editing?'수정했습니다.':'응시자를 등록했습니다.');
+	if($('status').classList.contains('good'))resetForm();
+};
+async function remove(c){
+	const typed=window.prompt(`삭제하려면 수험번호(${c.number})를 입력하세요. 등록 사진은 삭제되지 않고 로컬 백업 폴더로 이동합니다.`);
+	if(typed===null)return;
+	await act(()=>call('DELETE',`/api/admin/demo-candidates/${c.id}?confirm=${encodeURIComponent(typed)}`),'삭제했습니다. 사진은 로컬 백업으로 이동했습니다.');
+}
+$('photoInput').onchange=async()=>{
+	const file=$('photoInput').files[0];
+	$('photoInput').value='';
+	if(!file||!photoTarget)return;
+	if(file.size>5*1024*1024){say('사진 파일은 5MB 이하여야 합니다.','bad');return}
+	await act(async()=>call('POST',`/api/admin/demo-candidates/${photoTarget}/photo`,undefined,await file.arrayBuffer()),'등록 사진을 업로드했습니다. (서버가 형식과 해상도를 검사했습니다.)');
+};
+$('seedButton').onclick=async()=>{
+	try{
+		let result=await call('POST','/api/admin/demo-candidates/seed',{});
+		if(result.conflicts.length){
+			const list=result.conflicts.map(c=>`${c.number}(${c.differing_fields.join(', ')})`).join('\n');
+			if(!window.confirm(`기존 등록과 값이 다른 수험번호가 있습니다:\n${list}\n\n이 값들을 시드 값으로 덮어쓸까요? (사진은 변경되지 않습니다)`)){say(`시드 등록: 신규 ${result.created.length}명. 충돌 ${result.conflicts.length}건은 덮어쓰지 않았습니다.`,'');await refresh();return}
+			result=await call('POST','/api/admin/demo-candidates/seed',{overwrite_numbers:result.conflicts.map(c=>c.number)});
+		}
+		await refresh();
+		say(`시드 등록 완료: 신규 ${result.created.length}명, 기존 동일 ${result.already_present.length}명, 덮어쓰기 ${result.overwritten.length}명. 사진은 자동 배정되지 않았습니다.`,'good');
+	}catch(error){say(error.message,'bad')}
+};
+$('resetButton').onclick=async()=>{
+	const typed=window.prompt('초기화하면 기존 2026-0012·2026-0099를 제외한 모든 응시자 등록이 제거됩니다. 사진은 로컬 백업으로 이동하며 삭제되지 않습니다.\n계속하려면 RESET-DEMO-CANDIDATES 를 입력하세요.');
+	if(typed===null)return;
+	await act(()=>call('POST','/api/admin/demo-candidates/reset',{confirm:typed}),'초기화했습니다.');
+};
+$('examForm').onsubmit=async event=>{
+	event.preventDefault();
+	const id=$('examEditId').value;
+	const body={kind:$('eKind').value,name:$('eName').value,grades:$('eGrades').value.split(',').map(g=>g.trim()).filter(Boolean)};
+	await act(()=>id?call('PUT',`/api/admin/demo-exams/${id}`,body):call('POST','/api/admin/demo-exams',body),'시험 목록을 저장했습니다.');
+	$('examForm').reset();$('examEditId').value='';
+};
+$('loginForm').onsubmit=async event=>{
+	event.preventDefault();
+	try{
+		const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',
+			body:JSON.stringify({role:'admin',username:$('adminUser').value,password:$('adminPass').value})});
+		const data=await response.json();
+		if(!response.ok)throw new Error(data.error||'로그인하지 못했습니다.');
+		csrf=data.csrf_token;$('adminPass').value='';
+		$('loginSection').hidden=true;$('adminArea').hidden=false;
+		await refresh();say('관리자로 로그인했습니다.','good');
+	}catch(error){say(error.message,'bad')}
+};
+</script>
+</body>
+</html>

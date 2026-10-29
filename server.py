@@ -35,6 +35,7 @@ from mobile_id_provider import (
 from self_identity_provider import MockSelfIdentityProvider
 import demo_scenarios
 import verification_policy
+import demo_candidates
 
 
 ROOT = Path(__file__).resolve().parent
@@ -52,29 +53,13 @@ KIOSK_BROWSER_ASSERTION_FIELDS = frozenset({
     "real_authentication", "liveness", "score", "verified",
 })
 EXAM_ID = "exam-demo-2026"
-ROSTER = {
-    ("exam-demo-2026", "candidate-001"): {"name": "박세현", "number": "2026-0012"},
-    ("exam-demo-2026", "candidate-002"): {"name": "이모의", "number": "2026-0099"},
-}
-# Preset VIRTUAL DEMO data. These are not real personal data; the code is a fictional birth-date/gender
-# code used only by the contest simulation and is never accepted as a real resident number.
-DEMO_EXAMS = {
-    "demo-computer-2": "컴퓨터활용능력 2급",
-    "demo-mock-2026": "2026 모의 자격시험",
-}
-DEMO_CANDIDATE_PROFILES = {
-    ("exam-demo-2026", "candidate-001"): {"virtual_code": "980320-2", "exam_id": "demo-computer-2"},
-}
-DEMO_DEFAULT_EXAM_ID = "demo-computer-2"  # pre-selected in the UI; the server still compares on submit
+# Active DEMO candidates, rebuilt from the demo_candidates table (see demo_candidates.py).
+# Only active registrations are present, so inactive/deleted candidates can never start a kiosk session.
+ROSTER: dict[tuple[str, str], dict[str, str]] = {}
+ROSTER_LOCK = threading.Lock()
 DEMO_INFO_MAX_ATTEMPTS = 5
 # Server-side permission for the preset DEMO simulation. It never enables operational issuance.
 DEMO_SIMULATION_ENABLED = os.environ.get("EXAM_SAFE_DEMO_SIMULATION", "1") != "0"
-VIRTUAL_CODE_PATTERN = re.compile(r"^(\d{2})(\d{2})(\d{2})-([1-4])$")
-IMAGE_FILES = {
-    "2026-0012-registration.jpg",
-    "candidate2.png",
-    "impostor.png",
-}
 VENDOR_FILES = {
     "qr-decoder.min.js",
     "ZXING-BROWSER-LICENSE.txt",
@@ -294,6 +279,18 @@ def initialize_db() -> None:
             WHERE liveness_transaction_id IS NOT NULL
             """
         )
+        demo_candidates.init_schema(connection)
+    refresh_roster()
+
+
+def refresh_roster() -> None:
+    with connect_db() as connection:
+        active = demo_candidates.active_roster(connection)
+    fresh = {(EXAM_ID, candidate_id): info for candidate_id, info in active.items()}
+    with ROSTER_LOCK:
+        for key in [key for key in ROSTER if key not in fresh]:
+            del ROSTER[key]
+        ROSTER.update(fresh)
 
 
 def token_digest(token: str) -> str:
@@ -527,8 +524,187 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(403, {"error": "시연 권한이 없습니다."})
         return False
 
+    # ---- DEMO candidate registry (admin-only management; photos only via authenticated routes) ----
+    ADMIN_REGISTRY_PREFIX = "/api/admin/demo-"
+
+    def _has_role(self, *roles: str) -> bool:
+        if self._current_session_role() in roles:
+            return True
+        supplied_role = self.headers.get("X-Demo-Role", "")
+        expected = self.server.role_keys.get(supplied_role)
+        return bool(
+            supplied_role in roles
+            and expected
+            and hmac.compare_digest(self.headers.get("X-Demo-Key", ""), expected)
+        )
+
+    def _admin_ok(self, mutating: bool) -> bool:
+        """Server-side admin check. Cookie sessions must also present the per-session CSRF token on writes."""
+        if not self._require_role("admin"):
+            return False
+        if mutating and self._current_session_role() == "admin":
+            session = self.server.sessions.get(self._session_id()) or {}
+            supplied = self.headers.get("X-CSRF-Token", "")
+            if not session.get("csrf") or not hmac.compare_digest(supplied, session["csrf"]):
+                self._send_json(403, {"error": "CSRF 토큰이 올바르지 않습니다. 다시 로그인해 주세요."})
+                return False
+        return True
+
+    def _read_binary(self, limit: int) -> bytes | None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length < 1 or length > limit:
+            self._send_json(413 if length > limit else 400, {"error": "업로드 크기가 올바르지 않습니다. (최대 5MB)"})
+            return None
+        return self.rfile.read(length)
+
+    def _registry_audit(self, action: str, candidate_id: str | None = None, status: str = "accepted") -> None:
+        with connect_db() as connection:
+            write_event(connection, f"DEMO 응시자 관리: {action}", status, exam_id=EXAM_ID,
+                        candidate_id=candidate_id, actor="admin",
+                        details="DEMO registry change; names, virtual codes and photos are not recorded")
+
+    def _candidate_photo_request(self, candidate_id: str) -> None:
+        allowed = self._has_role("admin", "proctor", "supervisor")
+        if not allowed:
+            kiosk = self.server.kiosk_sessions.get(self.headers.get("X-Kiosk-Session", ""))
+            allowed = bool(
+                kiosk
+                and kiosk.get("candidate_id") == candidate_id
+                and kiosk.get("state") != "start"
+                and time.time() - kiosk["last_activity"] <= KIOSK_SESSION_TTL_SECONDS
+            )
+        if not allowed:
+            self._send_json(403, {"error": "등록 사진은 권한이 있는 관리자·감독관 또는 해당 응시자의 키오스크 세션만 볼 수 있습니다."})
+            return
+        with connect_db() as connection:
+            found = demo_candidates.photo_path(connection, candidate_id)
+        if not found:
+            self._send_json(404, {"error": "등록된 사진이 없습니다."})
+            return
+        self._send_file(found[0])
+
+    def _registry_route(self, method: str, path: str) -> bool:
+        """Dispatch the candidate/exam registry API. Returns True when the path belonged to it."""
+        if method == "GET" and path.startswith("/api/candidate-photo/"):
+            self._candidate_photo_request(path.removeprefix("/api/candidate-photo/"))
+            return True
+        if not path.startswith(self.ADMIN_REGISTRY_PREFIX):
+            return False
+        parts = path.removeprefix("/api/admin/").strip("/").split("/")
+        mutating = method != "GET"
+        if not self._admin_ok(mutating):
+            return True
+        try:
+            self._registry_dispatch(method, parts)
+        except demo_candidates.RegistryError as exc:
+            self._send_json(exc.status, {"error": exc.message, "field": exc.field, **exc.extra})
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+        return True
+
+    def _registry_dispatch(self, method: str, parts: list[str]) -> None:
+        kind = parts[0]
+        if kind == "demo-exams":
+            if method == "GET" and len(parts) == 1:
+                with connect_db() as connection:
+                    self._send_json(200, {"exams": demo_candidates.list_exams(connection),
+                                          "notice": "DEMO 시험 목록입니다. 실제 시험 운영기관과 연동된 데이터가 아닙니다."})
+                return
+            if method in ("POST", "PUT") and len(parts) <= 2:
+                payload = self._read_json()
+                with connect_db() as connection:
+                    exam = demo_candidates.save_exam(connection, payload, parts[1] if len(parts) == 2 else None)
+                self._registry_audit("시험 목록 변경")
+                self._send_json(201 if method == "POST" else 200, {"exam": exam})
+                return
+        if kind == "demo-candidates":
+            if method == "GET" and len(parts) == 1:
+                with connect_db() as connection:
+                    self._send_json(200, {
+                        "candidates": demo_candidates.list_candidates(connection),
+                        "exams": demo_candidates.list_exams(connection),
+                        "notice": "모든 정보는 시연용 가상 데이터입니다. 가상 코드에 실제 주민등록번호(일부 포함)를 입력하지 마세요.",
+                    })
+                return
+            if method == "POST" and parts[1:] == ["seed"]:
+                payload = self._read_json()
+                overwrite = payload.get("overwrite_numbers", [])
+                if not isinstance(overwrite, list) or not all(isinstance(n, str) for n in overwrite):
+                    raise ValueError("overwrite_numbers 형식이 올바르지 않습니다.")
+                with connect_db() as connection:
+                    result = demo_candidates.seed(connection, overwrite)
+                refresh_roster()
+                self._registry_audit("가상 응시자 시드 등록")
+                result["needs_admin_confirmation"] = bool(result["conflicts"])
+                result["photos_assigned"] = False
+                self._send_json(200, result)
+                return
+            if method == "POST" and parts[1:] == ["reset"]:
+                payload = self._read_json()
+                with connect_db() as connection:
+                    result = demo_candidates.reset(connection, payload.get("confirm"))
+                refresh_roster()
+                self._registry_audit("테스트 데이터 초기화")
+                self._send_json(200, result)
+                return
+            if method == "POST" and len(parts) == 1:
+                with connect_db() as connection:
+                    candidate = demo_candidates.create_candidate(connection, self._read_json())
+                refresh_roster()
+                self._registry_audit("응시자 추가", candidate["id"])
+                self._send_json(201, {"candidate": candidate})
+                return
+            if len(parts) == 2 and method == "PUT":
+                with connect_db() as connection:
+                    candidate = demo_candidates.update_candidate(connection, parts[1], self._read_json())
+                refresh_roster()
+                self._registry_audit("응시자 수정", parts[1])
+                self._send_json(200, {"candidate": candidate})
+                return
+            if len(parts) == 2 and method == "GET":
+                with connect_db() as connection:
+                    candidate = demo_candidates.get_candidate(connection, parts[1])
+                if not candidate:
+                    raise demo_candidates.RegistryError(404, "응시자를 찾을 수 없습니다.")
+                self._send_json(200, {"candidate": candidate})
+                return
+            if len(parts) == 2 and method == "DELETE":
+                confirm = parse_qs(urlparse(self.path).query).get("confirm", [None])[0]
+                with connect_db() as connection:
+                    demo_candidates.delete_candidate(connection, parts[1], confirm)
+                refresh_roster()
+                self._registry_audit("응시자 삭제(사진은 로컬 백업)", parts[1])
+                self._send_json(200, {"deleted": True, "photo_backup": "demo_photos/backup (local, not deleted)"})
+                return
+            if len(parts) == 3 and parts[2] == "photo" and method == "POST":
+                data = self._read_binary(demo_candidates.MAX_PHOTO_BYTES)
+                if data is None:
+                    return
+                with connect_db() as connection:
+                    info = demo_candidates.set_photo(connection, parts[1], data)
+                self._registry_audit("등록 사진 변경", parts[1])
+                self._send_json(200, info)
+                return
+        self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
+
+    def do_PUT(self) -> None:
+        if not self._registry_route("PUT", urlparse(self.path).path):
+            self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
+
+    def do_DELETE(self) -> None:
+        if not self._registry_route("DELETE", urlparse(self.path).path):
+            self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
+        if self._registry_route("GET", path):
+            return
+        if path == "/demo-candidates":
+            self._send_file(ROOT / "demo_candidates.html")
+            return
         if path == "/":
             self._send_file(ROOT / "index.html")
             return
@@ -542,10 +718,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_file(ROOT / "face_similarity.js")
             return
         if path.startswith("/images/"):
-            image_name = path.removeprefix("/images/")
-            if image_name in IMAGE_FILES:
-                self._send_file(ROOT / "images" / image_name)
-                return
+            # Registration photos are no longer public static files; see /api/candidate-photo/<id>.
             self._send_json(404, {"error": "이미지를 찾을 수 없습니다."})
             return
         if path.startswith("/vendor/"):
@@ -679,6 +852,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if self._registry_route("POST", path):
+            return
         if path == "/api/login":
             self._login()
             return
@@ -920,13 +1095,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "candidate_id": candidate_id,
                 "candidate_name": candidate_info["name"],
                 "candidate_number": candidate_info["number"],
-                "demo_exam_options": [{"id": key, "name": name} for key, name in DEMO_EXAMS.items()],
-                "demo_default_exam_id": DEMO_DEFAULT_EXAM_ID,
-                "registered_photo_url": (
-                    "/images/2026-0012-registration.jpg"
-                    if candidate_id == "candidate-001"
-                    else "/images/candidate2.png"
-                ),
+                **self._demo_exam_catalog(),
+                "registered_photo_url": self._photo_url(candidate_id),
                 "status": "awaiting_self_auth" if mode == "self_demo" else "awaiting_proctor",
                 "authentication_mode": mode,
                 "message": (
@@ -1216,7 +1386,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "demo_only": True,
                 "demo_token": demo_token,
                 "delivery": delivery,
-                "exam_name": "2026 모의 자격시험",
+                **self._exam_view(candidate_id),
                 "candidate_name": ROSTER[(exam_id, candidate_id)]["name"],
                 "candidate_number": ROSTER[(exam_id, candidate_id)]["number"],
                 "issued_at": datetime.fromtimestamp(now, timezone.utc).astimezone().isoformat(timespec="seconds"),
@@ -1472,7 +1642,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "demo_only": True,
                 "demo_token": demo_token,
                 "delivery": session.get("demo_delivery"),
-                "exam_name": "2026 모의 자격시험",
+                **self._exam_view(session["candidate_id"]),
                 "candidate_name": ROSTER[(session["exam_id"], session["candidate_id"])]["name"],
                 "candidate_number": ROSTER[(session["exam_id"], session["candidate_id"])]["number"],
                 "issued_at": datetime.fromtimestamp(now, timezone.utc).astimezone().isoformat(timespec="seconds"),
@@ -1602,7 +1772,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         "candidate_name": candidate["name"],
                         "candidate_number": candidate["number"],
                         "authentication_mode": session.get("mode") or "proctor",
-                        "photo_url": "/images/2026-0012-registration.jpg" if candidate_id == "candidate-001" else "/images/candidate2.png",
+                        "photo_url": self._photo_url(candidate_id),
                         "expires_in": max(
                             0,
                             int(KIOSK_SESSION_TTL_SECONDS - (now - session["last_activity"])),
@@ -1663,20 +1833,37 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
 
     @staticmethod
+    def _demo_exam_catalog() -> dict[str, object]:
+        with connect_db() as connection:
+            exams = demo_candidates.list_exams(connection)
+        return {
+            "demo_exam_options": [
+                {"id": e["id"], "name": e["name"], "kind": e["kind"], "grades": e["grades"], "default_grade": e["default_grade"]}
+                for e in exams
+            ],
+            "demo_default_exam_id": demo_candidates.DEFAULT_EXAM_ID,
+        }
+
+    @staticmethod
+    def _exam_view(candidate_id: str) -> dict[str, str]:
+        """Server-side exam name/grade for display; QR tokens never carry this data."""
+        with connect_db() as connection:
+            profile = demo_candidates.server_profile(connection, candidate_id)
+        exam = profile["exam"] if profile else None
+        return {
+            "exam_name": exam["name"] if exam else "2026 모의 자격시험",
+            "exam_grade": (profile or {}).get("grade") or "",
+        }
+
+    @staticmethod
+    def _photo_url(candidate_id: str) -> str | None:
+        with connect_db() as connection:
+            has_photo = demo_candidates.photo_path(connection, candidate_id) is not None
+        return f"/api/candidate-photo/{candidate_id}" if has_photo else None
+
+    @staticmethod
     def _valid_virtual_code(value: object) -> bool:
-        if not isinstance(value, str):
-            return False
-        match = VIRTUAL_CODE_PATTERN.match(value)
-        if not match:
-            return False
-        yy, mm, dd = (int(part) for part in match.groups()[:3])
-        for century in (1900, 2000):
-            try:
-                datetime(century + yy, mm, dd)
-                return True
-            except ValueError:
-                continue
-        return False
+        return demo_candidates.valid_virtual_code(value)
 
     def _kiosk_verify_demo_info(self) -> None:
         """Compare virtual DEMO info with server presets. Never trusts or stores browser scores or raw input."""
@@ -1693,7 +1880,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not session:
             self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
             return
-        code, exam_ref = payload.get("virtual_code"), payload.get("exam")
+        code, exam_ref, grade_ref = payload.get("virtual_code"), payload.get("exam"), payload.get("grade")
         if not isinstance(code, str) or not code.strip():
             self._send_json(400, {"error": "가상 DEMO 생년월일·구분 코드를 입력해 주세요. 예: 980320-2", "field": "virtual_code"})
             return
@@ -1703,6 +1890,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not isinstance(exam_ref, str) or not exam_ref.strip():
             self._send_json(400, {"error": "시험명을 선택하거나 입력해 주세요.", "field": "exam"})
             return
+        if not isinstance(grade_ref, str) or not grade_ref.strip():
+            self._send_json(400, {"error": "급수·등급을 선택해 주세요.", "field": "grade"})
+            return
         with self.server.kiosk_lock:
             if session.get("mode") != "self_demo" or session["state"] != "awaiting_self_auth":
                 self._send_json(409, {"error": "추가 DEMO 정보를 입력할 수 있는 상태가 아닙니다."})
@@ -1711,16 +1901,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             if attempts >= DEMO_INFO_MAX_ATTEMPTS:
                 self._send_json(429, {"error": "입력 시도 횟수를 초과했습니다. 감독관 확인을 요청해 주세요."})
                 return
-            profile = DEMO_CANDIDATE_PROFILES.get((session["exam_id"], session["candidate_id"]))
-            exam_key = next(
-                (key for key, name in DEMO_EXAMS.items() if exam_ref.strip() in (key, name)),
-                None,
-            )
+            with connect_db() as connection:
+                profile = demo_candidates.server_profile(connection, session["candidate_id"])
+            registered_exam = profile["exam"] if profile else None
             matched = bool(
                 profile
-                and exam_key
+                and registered_exam
+                and profile["virtual_code"]
                 and hmac.compare_digest(code.strip().encode(), profile["virtual_code"].encode())
-                and exam_key == profile["exam_id"]
+                and exam_ref.strip() in (registered_exam["id"], registered_exam["name"])
+                and hmac.compare_digest(grade_ref.strip().encode(), (profile["grade"] or "").encode())
             )
             session["demo_info_attempts"] = attempts + 1
             session["demo_info_verified"] = matched
@@ -1792,6 +1982,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             now = time.time()
             candidate_id = session["candidate_id"]
             exam_id = session["exam_id"]
+            if (exam_id, candidate_id) not in ROSTER:
+                self._send_json(409, {"error": "비활성화되었거나 등록되지 않은 응시자입니다. 감독관에게 문의하세요."})
+                return
             with connect_db() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 if connection.execute(
@@ -1852,7 +2045,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "real_authentication": False,
                 "demo_token": demo_token,
                 "delivery": "screen",
-                "exam_name": "2026 모의 자격시험",
+                **self._exam_view(candidate_id),
                 "candidate_name": ROSTER[(exam_id, candidate_id)]["name"],
                 "candidate_number": ROSTER[(exam_id, candidate_id)]["number"],
                 "issued_at": datetime.fromtimestamp(now, timezone.utc).astimezone().isoformat(timespec="seconds"),
@@ -1959,7 +2152,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         "simulation": bool(session.get("demo_simulation")),
                         "demo_token": session["demo_token"],
                         "delivery": session.get("demo_delivery"),
-                        "exam_name": "2026 모의 자격시험",
+                        **self._exam_view(session["candidate_id"]),
                         "issued_at": datetime.fromtimestamp(session["demo_issued_at"], timezone.utc).astimezone().isoformat(timespec="seconds"),
                         "expires_at": datetime.fromtimestamp(session["demo_expires_at"], timezone.utc).astimezone().isoformat(timespec="seconds"),
                     }
@@ -2429,7 +2622,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         session_id = uuid.uuid4().hex
+        csrf_token = secrets.token_urlsafe(24)
         self.server.sessions[session_id] = {
+            "csrf": csrf_token,
             "role": role,
             "candidate_id": account.get("candidate_id"),
             "expires_at": time.time() + SESSION_TTL_SECONDS,
@@ -2440,6 +2635,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "success": True,
                 "role": role,
                 "candidate_id": account.get("candidate_id"),
+                "csrf_token": csrf_token,
                 "message": "데모 세션에 로그인했습니다.",
             },
             extra_headers={
@@ -2975,7 +3171,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "candidate_id": candidate_id,
                 "candidate_name": candidate["name"],
                 "candidate_number": candidate["number"],
-                "exam_name": "2026 모의 자격시험",
+                **self._exam_view(candidate_id),
                 "issued_at": datetime.fromtimestamp(now, timezone.utc).astimezone().isoformat(timespec="seconds"),
                 "expires_at": datetime.fromtimestamp(expires_at, timezone.utc).astimezone().isoformat(timespec="seconds"),
                 "qr_png": qr_png,

@@ -231,6 +231,8 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <input id="virtualCode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="예: 980320-2 (가상 예시)" aria-describedby="demoInfoStatus"></div>
 <div class="field"><label for="demoExam">시험명 (서버 DEMO 시험 목록)</label>
 <select id="demoExam"></select></div>
+<div class="field"><label for="demoGrade">급수·등급</label>
+<select id="demoGrade"></select></div>
 <div class="row"><button type="submit" id="demoInfoSubmit">DEMO 정보 확인 후 시뮬레이션 QR 발급</button><button type="button" class="secondary" id="demoInfoBack">결과 화면으로 돌아가기</button></div>
 </form>
 <div class="status" id="demoInfoStatus" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
@@ -296,6 +298,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <div class="ticket-demo">공모전 시제품 · 실제 입실 불가</div>
 <table class="ticket-meta"><tbody>
 <tr><th>시험명</th><td id="ticketExamName"></td></tr>
+<tr><th>급수·등급</th><td id="ticketExamGrade"></td></tr>
 <tr><th>응시자</th><td id="ticketCandidateName"></td></tr>
 <tr><th>수험번호</th><td id="ticketCandidateNumber"></td></tr>
 <tr><th>발급 시각</th><td id="ticketIssuedAt"></td></tr>
@@ -724,6 +727,23 @@ async function startCameraPreview(){
 	}
 }
 const API_TIMEOUT_MS=10000;
+let registeredPhotoObjectUrl='';
+function releaseRegisteredPhoto(){
+	if(registeredPhotoObjectUrl)URL.revokeObjectURL(registeredPhotoObjectUrl);
+	registeredPhotoObjectUrl='';
+	$('registeredFacePhoto').removeAttribute('src');
+}
+// The registration photo is only served to this kiosk session for its own candidate; it is kept as an in-memory blob.
+async function loadRegisteredPhoto(url){
+	releaseRegisteredPhoto();
+	const image=$('registeredFacePhoto');
+	if(!url){image.hidden=true;return}
+	const response=await fetch(url,{headers:{'X-Kiosk-Session':kioskSessionId},cache:'no-store',credentials:'omit'});
+	if(!response.ok)throw new Error('registered photo unavailable');
+	registeredPhotoObjectUrl=URL.createObjectURL(await response.blob());
+	image.hidden=false;
+	await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=registeredPhotoObjectUrl});
+}
 async function api(path,body){
 	const controller=new AbortController();
 	const timer=window.setTimeout(()=>controller.abort(),API_TIMEOUT_MS);
@@ -771,7 +791,7 @@ async function closeSession(){
 	$('inlineProctorStatus').hidden=true;
 	$('ipPass').value='';
 	$('simPass').value='';
-	$('registeredFacePhoto').removeAttribute('src');
+	releaseRegisteredPhoto();
 	$('registeredFacePhoto').hidden=true;
 	$('entryQr').removeAttribute('src');
 	$('entryQr').hidden=true;
@@ -882,6 +902,7 @@ function displayQr(result,isDemo){
 function updatePrintTicket(result,isDemo){
 	const imageUrl=qrDataUrl(result.qr_png,result.qr_mime_type);
 	$('ticketExamName').textContent=result.exam_name||'2026 모의 자격시험';
+	$('ticketExamGrade').textContent=result.exam_grade||candidateRecord?.exam_grade||'-';
 	$('ticketCandidateName').textContent=result.candidate_name||candidateRecord?.candidate_name||'가상 응시자';
 	$('ticketCandidateNumber').textContent=result.candidate_number||candidateRecord?.candidate_number||'';
 	$('ticketIssuedAt').textContent=result.issued_at||'서버 발급 시각 확인 불가';
@@ -1312,10 +1333,24 @@ $('goDemoInfo').onclick=()=>{
 		select.append(item);
 	}
 	if(candidateRecord?.demo_default_exam_id)select.value=candidateRecord.demo_default_exam_id;
+	fillDemoGrades();
 	$('demoInfoStatus').hidden=true;
 	showScreen('demoInfoScreen');
 	$('virtualCode').focus();
 };
+function fillDemoGrades(){
+	const exam=(candidateRecord?.demo_exam_options||[]).find(option=>option.id===$('demoExam').value);
+	const select=$('demoGrade');
+	select.textContent='';
+	for(const grade of exam?.grades||[]){
+		const item=document.createElement('option');
+		item.value=grade;
+		item.textContent=grade;
+		select.append(item);
+	}
+	if(exam?.default_grade)select.value=exam.default_grade;
+}
+$('demoExam').onchange=fillDemoGrades;
 $('demoInfoBack').onclick=()=>showScreen('selfResultScreen');
 $('demoInfoForm').onsubmit=async event=>{
 	event.preventDefault();
@@ -1325,9 +1360,10 @@ $('demoInfoForm').onsubmit=async event=>{
 	if(!code){show('가상 DEMO 생년월일·구분 코드를 입력해 주세요. 예: 980320-2','bad');$('virtualCode').focus();return}
 	if(!/^\d{6}-[1-4]$/.test(code)){show('형식이 올바르지 않습니다. YYMMDD-N 형식의 가상 코드를 입력해 주세요. 예: 980320-2','bad');$('virtualCode').focus();return}
 	if(!$('demoExam').value){show('시험명을 선택해 주세요.','bad');return}
+	if(!$('demoGrade').value){show('급수·등급을 선택해 주세요.','bad');return}
 	$('demoInfoSubmit').disabled=true;
 	try{
-		await api('/api/kiosk/self-demo/verify-demo-info',{kiosk_session_id:kioskSessionId,virtual_code:code,exam:$('demoExam').value});
+		await api('/api/kiosk/self-demo/verify-demo-info',{kiosk_session_id:kioskSessionId,virtual_code:code,exam:$('demoExam').value,grade:$('demoGrade').value});
 		const result=await api('/api/kiosk/demo-auto-issue',{kiosk_session_id:kioskSessionId,demo_simulation:true,scenario:'demo_info_simulation'});
 		if(result.demo_only!==true||result.simulation!==true)throw new Error('invalid simulation response');
 		$('virtualCode').value='';
@@ -1484,9 +1520,8 @@ $('candidateForm').onsubmit=async event=>{
 		candidateRecord=result;
 		$('candidateInfo').textContent=`${result.candidate_name} · ${result.candidate_number}`;
 		if(currentMode==='self_demo'){
-			$('registeredFacePhoto').src=result.registered_photo_url;
-			$('registeredFacePhoto').hidden=false;
-			setStatus('cameraStatus','계속하려면 카메라를 켜 주세요.');
+			await loadRegisteredPhoto(result.registered_photo_url);
+			setStatus('cameraStatus',result.registered_photo_url?'계속하려면 카메라를 켜 주세요.':'등록 사진이 없어 얼굴 비교를 할 수 없습니다. 감독관 확인을 요청해 주세요.',result.registered_photo_url?'':'warn');
 			$('completeSelfDemo').hidden=true;
 			capturedFaceResult=null;
 			showScreen('selfCameraScreen');

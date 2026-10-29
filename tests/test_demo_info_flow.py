@@ -3,7 +3,7 @@ import unittest
 
 import test_scenarios as ts
 
-CODE, EXAM = "980320-2", "demo-computer-2"
+CODE, EXAM, GRADE = "980320-2", "demo-computer", "2급"
 SCORE_FIELDS = ("face_match", "face_similarity", "liveness", "score", "verified", "real_authentication", "face_score")
 
 
@@ -21,9 +21,9 @@ class DemoInfoFlowTests(unittest.TestCase):
         self.record = record
         return sid
 
-    def info(self, sid, code=CODE, exam=EXAM, **extra):
+    def info(self, sid, code=CODE, exam=EXAM, grade=GRADE, **extra):
         return self.api.request("POST", "/api/kiosk/self-demo/verify-demo-info",
-                                {"kiosk_session_id": sid, "virtual_code": code, "exam": exam, **extra})
+                                {"kiosk_session_id": sid, "virtual_code": code, "exam": exam, "grade": grade, **extra})
 
     def issue(self, sid, scenario="demo_info_simulation", **extra):
         return self.api.request("POST", "/api/kiosk/demo-auto-issue",
@@ -33,12 +33,14 @@ class DemoInfoFlowTests(unittest.TestCase):
         with sqlite3.connect(self.db_path) as db:
             return db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
-    def test_lookup_lists_demo_exams_including_computer_skill_2(self):
+    def test_lookup_lists_demo_exams_with_separate_grades(self):
         self.new_session()
-        names = [item["name"] for item in self.record["demo_exam_options"]]
-        self.assertIn("컴퓨터활용능력 2급", names)
+        options = {item["name"]: item for item in self.record["demo_exam_options"]}
+        self.assertEqual(options["컴퓨터활용능력"]["grades"], ["1급", "2급"])
+        self.assertEqual(options["컴퓨터활용능력"]["default_grade"], "2급")
         default = self.record["demo_default_exam_id"]
-        self.assertEqual({o["id"]: o["name"] for o in self.record["demo_exam_options"]}[default], "컴퓨터활용능력 2급")
+        self.assertEqual({o["id"]: o["name"] for o in self.record["demo_exam_options"]}[default], "컴퓨터활용능력")
+        self.assertNotIn("virtual_code", str(self.record))  # registered code is never sent to the browser
 
     def test_matching_info_issues_marked_simulation_qr_without_proctor(self):
         sid = self.new_session()
@@ -78,9 +80,11 @@ class DemoInfoFlowTests(unittest.TestCase):
             with self.subTest(exam=exam):
                 status, _ = self.info(sid, exam=exam)
                 self.assertIn(status, (400, 403))
-        self.assertEqual(self.info(sid, exam="demo-mock-2026")[0], 403)  # real exam, but not the preset one
+        self.assertEqual(self.info(sid, exam="demo-engineer-info", grade="해당 없음")[0], 403)  # exists, not the preset one
+        self.assertEqual(self.info(sid, grade="1급")[0], 403)  # right exam, wrong grade
+        self.assertEqual(self.info(sid, grade="")[0], 400)
         self.assertEqual(self.issue(sid)[0], 403)
-        self.assertEqual(self.info(sid, exam="컴퓨터활용능력 2급")[0], 200)  # name entry also matches
+        self.assertEqual(self.info(sid, exam="컴퓨터활용능력")[0], 200)  # name entry also matches
 
     def test_attempts_are_limited(self):
         sid = self.new_session()
@@ -171,7 +175,7 @@ class DemoSimulationDisabledTests(unittest.TestCase):
         sid = body["kiosk_session_id"]
         self.api.lookup_kiosk_candidate(sid, mode="self_demo")
         self.assertEqual(self.api.request("POST", "/api/kiosk/self-demo/verify-demo-info",
-                                          {"kiosk_session_id": sid, "virtual_code": CODE, "exam": EXAM})[0], 200)
+                                          {"kiosk_session_id": sid, "virtual_code": CODE, "exam": EXAM, "grade": GRADE})[0], 200)
         status, _ = self.api.request("POST", "/api/kiosk/demo-auto-issue",
                                      {"kiosk_session_id": sid, "demo_simulation": True, "scenario": "demo_info_simulation"})
         self.assertEqual(status, 403)

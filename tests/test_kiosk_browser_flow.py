@@ -48,12 +48,13 @@ class KioskBrowserFlowTests(unittest.TestCase):
     def assert_form_layout(self, page):
         for width, height in ((1280, 800), (390, 844), (320, 640)):
             page.set_viewport_size({"width": width, "height": height})
-            boxes = page.evaluate("""() => ['virtualCode','demoExam'].map(id => {
+            boxes = page.evaluate("""() => ['virtualCode','demoExam','demoGrade'].map(id => {
                 const e = document.getElementById(id), r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect();
                 return {id, top: r.top, bottom: r.bottom, w: r.width, pw: p.width, right: r.right, sw: e.scrollWidth, cw: e.clientWidth};
             })""")
-            code, exam = boxes
+            code, exam, grade = boxes
             self.assertLessEqual(code["bottom"], exam["top"], (width, boxes))  # separate rows
+            self.assertLessEqual(exam["bottom"], grade["top"], (width, boxes))
             for box in boxes:
                 self.assertAlmostEqual(box["w"], box["pw"], delta=1, msg=(width, box))  # 100% of its row
                 self.assertLessEqual(box["right"], width, (width, box))
@@ -114,8 +115,14 @@ class KioskBrowserFlowTests(unittest.TestCase):
             page.evaluate("applyDemoScreenGate({status:'reference_only', score:0.58})")
             page.click("#goDemoInfo")
             page.wait_for_function("currentScreenId === 'demoInfoScreen'")
-            self.assertIn("컴퓨터활용능력 2급", page.inner_text("#demoExam"))
-            self.assertEqual(page.eval_on_selector("#demoExam", "e => e.selectedOptions[0].textContent"), "컴퓨터활용능력 2급")
+            self.assertIn("컴퓨터활용능력", page.inner_text("#demoExam"))
+            self.assertEqual(page.eval_on_selector("#demoExam", "e => e.selectedOptions[0].textContent"), "컴퓨터활용능력")
+            self.assertEqual(page.inner_text("#demoGrade").split(), ["1급", "2급"])
+            self.assertEqual(page.eval_on_selector("#demoGrade", "e => e.value"), "2급")
+            page.select_option("#demoExam", label="한국사능력검정시험")
+            self.assertEqual(page.inner_text("#demoGrade").split(), ["심화", "기본"])  # only that exam's grades
+            page.select_option("#demoExam", label="컴퓨터활용능력")
+            self.assertEqual(page.eval_on_selector("#demoGrade", "e => e.value"), "2급")
             self.assert_form_layout(page)
             for code, fragment in (("", "입력해"), ("98032", "형식"), ("990101-1", "일치하지 않습니다")):
                 page.fill("#virtualCode", code)
