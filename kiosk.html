@@ -86,6 +86,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 .a11y-bar button{min-height:48px;padding:8px 16px;font-size:18px;background:#fff;color:#142f55}
 .skip-link{position:absolute;left:-999px}.skip-link:focus{left:12px;top:8px;background:#fff;color:#000;padding:10px;z-index:10}
 @media print{.a11y-bar,.skip-link{display:none!important}}
+.flow-steps{display:flex;gap:6px;flex-wrap:wrap;padding:0;margin:0 0 12px;list-style:none;font-size:15px}.flow-steps li{padding:4px 10px;border:2px solid #9db0c4;border-radius:999px}.flow-steps li.done{border-color:#0b6b3a;font-weight:700}.flow-steps li.current{background:#0b5cad;color:#fff;border-color:#0b5cad;font-weight:700}@media print{.flow-steps{display:none}}
 </style>
 </head>
 <body>
@@ -99,6 +100,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 </div>
 </header>
 <main id="mainContent" tabindex="-1">
+<ol id="flowSteps" class="flow-steps" aria-label="입실 시연 진행 단계 (DEMO · 실제 인증 아님)"></ol>
 <div class="notice">공모전 시제품 · 모바일신분증은 모의 인증만 제공하며 공식 기관 연동은 미구현입니다. 화면 결과와 QR은 실제 신원확인 또는 실제 입실 허가가 아닙니다.</div>
 <div class="card">
 <section class="screen active" id="homeScreen" aria-labelledby="homeTitle">
@@ -453,7 +455,24 @@ function showLivenessResult(result){
 	const status=result.status==='live_candidate'?'warn':'bad';
 	setStatus('livenessResult',`Human Antispoof 3.3.6 PoC · ${details[result.status]||'검사 실패'}${score} · 인증 결과 아님`,status);
 }
+// Progress indicator only; it never reflects a verified identity (every step is a DEMO step).
+const FLOW_STEPS=[['numberScreen','수험번호 조회'],['selfCameraScreen','카메라 촬영'],['selfResultScreen','참고용 분석'],['proctorWaitScreen','감독관 확인'],['qrScreen','DEMO QR'],['demoEntryScreen','입실 시연']];
+function renderFlowSteps(id){
+	const list=$('flowSteps');
+	if(!list)return;
+	const index=FLOW_STEPS.findIndex(([screen])=>screen===id);
+	list.hidden=index<0;
+	list.textContent='';
+	FLOW_STEPS.forEach(([,label],position)=>{
+		const item=document.createElement('li');
+		item.textContent=label;
+		if(position<index)item.className='done';
+		else if(position===index){item.className='current';item.setAttribute('aria-current','step')}
+		list.append(item);
+	});
+}
 function showScreen(id){
+	renderFlowSteps(id);
 	if(currentScreenId===id)return;
 	document.querySelectorAll('.screen').forEach(screen=>screen.classList.toggle('active',screen.id===id));
 	currentScreenId=id;

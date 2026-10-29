@@ -33,6 +33,7 @@ from mobile_id_provider import (
     OfficialMobileIdProvider,
 )
 from self_identity_provider import MockSelfIdentityProvider
+import demo_scenarios
 import verification_policy
 
 
@@ -515,6 +516,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/kiosk":
             self._send_file(ROOT / "kiosk.html")
             return
+        if path == "/demo-scenarios":
+            self._send_file(ROOT / "demo_scenarios.html")
+            return
         if path == "/face_similarity.js":
             self._send_file(ROOT / "face_similarity.js")
             return
@@ -638,6 +642,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
             self._list_kiosk_requests()
             return
+        if path == "/api/demo/scenarios":
+            if self._require_role("proctor"):
+                self._send_json(200, {"demo_only": True, "banner": demo_scenarios.BANNER,
+                                      "scenarios": self.server.scenario_sandbox.list_scenarios()})
+            return
+        if path == "/api/demo/scenario/events":
+            if self._require_role("proctor"):
+                self._send_json(200, {"demo_only": True, "domain": "demo_scenario",
+                                      "events": self.server.scenario_sandbox.events()})
+            return
+        if path == "/api/proctor/overview":
+            if self._require_role("proctor"):
+                self._proctor_overview()
+            return
         self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
 
     def do_POST(self) -> None:
@@ -684,6 +702,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/hold":
             if self._require_role("proctor"):
                 self._hold()
+            return
+        if path in {"/api/demo/scenario/start", "/api/demo/scenario/act", "/api/demo/scenario/reset"}:
+            if self._require_role("proctor"):
+                self._scenario_action(path.rsplit("/", 1)[1])
             return
         if path == "/api/demo/reset":
             if self._require_role("proctor"):
@@ -3403,6 +3425,50 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
         self._send_json(200, {"message": "입실을 보류하고 서버 기록에 저장했습니다."})
 
+    def _scenario_action(self, name: str) -> None:
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        sandbox = self.server.scenario_sandbox
+        try:
+            if name == "start":
+                result = sandbox.start(payload.get("scenario"))
+            elif name == "reset":
+                result = sandbox.reset()
+            else:
+                result = sandbox.act(payload.get("run_id"), payload.get("action"), payload.get("params"))
+        except demo_scenarios.ScenarioError as exc:
+            self._send_json(exc.status, {"error": exc.message, "demo_only": True})
+            return
+        self._send_json(200, result)
+
+    def _proctor_overview(self) -> None:
+        with self.server.kiosk_lock:
+            pending = sum(1 for item in self.server.kiosk_sessions.values()
+                          if item.get("state") == "awaiting_proctor")
+        with connect_db() as connection:
+            demo_admitted = connection.execute(
+                "SELECT COUNT(*) FROM demo_admissions WHERE exam_id = ?", (EXAM_ID,)
+            ).fetchone()[0]
+            rows = connection.execute(
+                """
+                SELECT occurred_at, event, outcome, candidate_id, details, domain
+                FROM events WHERE actor = 'proctor' AND domain = 'demo' AND event LIKE '키오스크%'
+                ORDER BY event_id DESC LIMIT 30
+                """
+            ).fetchall()
+        reviews = []
+        for row in rows:
+            item = dict(row)
+            candidate = item.get("candidate_id")
+            item["candidate_id"] = f"***{candidate[-3:]}" if candidate else candidate
+            reviews.append(item)
+        self._send_json(200, {"demo_only": True, "banner": demo_scenarios.BANNER,
+                              "pending_review_count": pending, "demo_admitted_count": demo_admitted,
+                              "recent_reviews": reviews})
+
     def _reset_demo(self) -> None:
         try:
             self._read_json()
@@ -3445,6 +3511,7 @@ def main() -> None:
     server.sessions = {}
     server.kiosk_sessions = {}
     server.kiosk_lock = threading.Lock()
+    server.scenario_sandbox = demo_scenarios.ScenarioSandbox(qr_factory=RequestHandler._generate_qr_png)
     print(f"시연 응시자 키: {role_keys['candidate']}", flush=True)
     print(f"시연 감독관 키: {role_keys['proctor']}", flush=True)
     print(f"시연 관리자 키: {role_keys['admin']}", flush=True)
