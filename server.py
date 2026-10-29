@@ -65,6 +65,7 @@ DEMO_EXAMS = {
 DEMO_CANDIDATE_PROFILES = {
     ("exam-demo-2026", "candidate-001"): {"virtual_code": "980320-2", "exam_id": "demo-computer-2"},
 }
+DEMO_DEFAULT_EXAM_ID = "demo-computer-2"  # pre-selected in the UI; the server still compares on submit
 DEMO_INFO_MAX_ATTEMPTS = 5
 # Server-side permission for the preset DEMO simulation. It never enables operational issuance.
 DEMO_SIMULATION_ENABLED = os.environ.get("EXAM_SAFE_DEMO_SIMULATION", "1") != "0"
@@ -920,6 +921,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "candidate_name": candidate_info["name"],
                 "candidate_number": candidate_info["number"],
                 "demo_exam_options": [{"id": key, "name": name} for key, name in DEMO_EXAMS.items()],
+                "demo_default_exam_id": DEMO_DEFAULT_EXAM_ID,
                 "registered_photo_url": (
                     "/images/2026-0012-registration.jpg"
                     if candidate_id == "candidate-001"

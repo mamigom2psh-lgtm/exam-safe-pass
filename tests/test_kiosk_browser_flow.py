@@ -45,6 +45,23 @@ class KioskBrowserFlowTests(unittest.TestCase):
         self.assertIn("공모전 시제품 · 실제 입실 불가", page.text_content("#ticketDemoFoot"))
         self.assertEqual(self.errors, [])
 
+    def assert_form_layout(self, page):
+        for width, height in ((1280, 800), (390, 844), (320, 640)):
+            page.set_viewport_size({"width": width, "height": height})
+            boxes = page.evaluate("""() => ['virtualCode','demoExam'].map(id => {
+                const e = document.getElementById(id), r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect();
+                return {id, top: r.top, bottom: r.bottom, w: r.width, pw: p.width, right: r.right, sw: e.scrollWidth, cw: e.clientWidth};
+            })""")
+            code, exam = boxes
+            self.assertLessEqual(code["bottom"], exam["top"], (width, boxes))  # separate rows
+            for box in boxes:
+                self.assertAlmostEqual(box["w"], box["pw"], delta=1, msg=(width, box))  # 100% of its row
+                self.assertLessEqual(box["right"], width, (width, box))
+                self.assertLessEqual(box["sw"], box["cw"] + 1, (width, box))  # text not clipped
+            overflow = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+            self.assertLessEqual(overflow, 1, width)
+        page.set_viewport_size({"width": 1280, "height": 800})
+
     def db_count(self, table):
         with sqlite3.connect(self.db_path) as db:
             return db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
@@ -98,6 +115,8 @@ class KioskBrowserFlowTests(unittest.TestCase):
             page.click("#goDemoInfo")
             page.wait_for_function("currentScreenId === 'demoInfoScreen'")
             self.assertIn("컴퓨터활용능력 2급", page.inner_text("#demoExam"))
+            self.assertEqual(page.eval_on_selector("#demoExam", "e => e.selectedOptions[0].textContent"), "컴퓨터활용능력 2급")
+            self.assert_form_layout(page)
             for code, fragment in (("", "입력해"), ("98032", "형식"), ("990101-1", "일치하지 않습니다")):
                 page.fill("#virtualCode", code)
                 page.click("#demoInfoSubmit")

@@ -37,6 +37,8 @@ class DemoInfoFlowTests(unittest.TestCase):
         self.new_session()
         names = [item["name"] for item in self.record["demo_exam_options"]]
         self.assertIn("컴퓨터활용능력 2급", names)
+        default = self.record["demo_default_exam_id"]
+        self.assertEqual({o["id"]: o["name"] for o in self.record["demo_exam_options"]}[default], "컴퓨터활용능력 2급")
 
     def test_matching_info_issues_marked_simulation_qr_without_proctor(self):
         sid = self.new_session()

@@ -54,7 +54,13 @@ input{width:min(100%,440px);font-size:26px;padding:16px;border:2px solid #71849a
 .bottom-actions{width:min(900px,100%);margin:0 auto;padding:18px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .bottom-actions button{min-height:54px;font-size:17px}
 footer{text-align:center;color:#40566f;font-size:15px;padding:0 18px 20px}
-@media(max-width:650px){.choices{grid-template-columns:1fr}.choices button{min-height:115px}header{padding:20px}main{margin:18px auto}.bottom-actions{flex-direction:column}.bottom-actions button{width:100%}form button{width:100%}}
+#demoInfoForm{display:block}
+#demoInfoForm .field{display:block;width:100%;margin:0 0 22px}
+#demoInfoForm input,#demoInfoForm select{display:block;box-sizing:border-box;width:100%;max-width:100%;font:inherit;font-size:24px;line-height:1.35;min-height:60px;padding:14px 16px;border:2px solid #71849a;border-radius:10px;background:#fff;color:inherit;text-overflow:ellipsis}
+#demoInfoForm select{white-space:normal;overflow-wrap:anywhere}
+#demoInfoForm label{overflow-wrap:anywhere}
+#demoInfoForm .row button{flex:1 1 260px;white-space:normal}
+@media(max-width:650px){#demoInfoForm input,#demoInfoForm select{font-size:20px}.choices{grid-template-columns:1fr}.choices button{min-height:115px}header{padding:20px}main{margin:18px auto}.bottom-actions{flex-direction:column}.bottom-actions button{width:100%}form button{width:100%}}
 @page{size:A4;margin:12mm}
 @page receipt{size:80mm auto;margin:4mm}
 .ticket-demo-foot{margin-top:8px}
@@ -221,10 +227,10 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <h2 id="demoInfoTitle" tabindex="-1">추가 정보 입력 (가상 DEMO 데이터)</h2>
 <p class="lead"><strong>공식 신분 인증이 아닙니다.</strong> 아래 값은 <u>가상 DEMO 생년월일·구분 코드</u>입니다. 실제 주민등록번호나 그 일부를 입력하지 마세요. 서버의 사전 설정 DEMO 데이터와 대조만 하며 입력값은 저장·기록되지 않습니다.</p>
 <form id="demoInfoForm" novalidate>
-<label for="virtualCode">가상 DEMO 생년월일·구분 코드 (YYMMDD-N)</label>
-<input id="virtualCode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="예: 980320-2 (가상 예시)" aria-describedby="demoInfoStatus">
-<label for="demoExam">시험명 (DEMO 시험 목록)</label>
-<select id="demoExam"></select>
+<div class="field"><label for="virtualCode">가상 DEMO 생년월일·구분 코드 (YYMMDD-N)</label>
+<input id="virtualCode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="예: 980320-2 (가상 예시)" aria-describedby="demoInfoStatus"></div>
+<div class="field"><label for="demoExam">시험명 (서버 DEMO 시험 목록)</label>
+<select id="demoExam"></select></div>
 <div class="row"><button type="submit" id="demoInfoSubmit">DEMO 정보 확인 후 시뮬레이션 QR 발급</button><button type="button" class="secondary" id="demoInfoBack">결과 화면으로 돌아가기</button></div>
 </form>
 <div class="status" id="demoInfoStatus" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
@@ -1305,6 +1311,7 @@ $('goDemoInfo').onclick=()=>{
 		item.textContent=option.name;
 		select.append(item);
 	}
+	if(candidateRecord?.demo_default_exam_id)select.value=candidateRecord.demo_default_exam_id;
 	$('demoInfoStatus').hidden=true;
 	showScreen('demoInfoScreen');
 	$('virtualCode').focus();
