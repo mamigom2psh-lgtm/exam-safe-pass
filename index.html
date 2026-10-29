@@ -47,7 +47,7 @@
 <div class="tile"><span>가상 증명사진</span><img class="portrait" src="images/2026-0012-registration.jpg" alt="가상 응시자 박세현의 증명사진"><strong>박세현 · 가상 데이터</strong></div>
 <p class="small">시연용 mock provider가 가상 성공/실패 결과를 반환합니다. 모의 인증 성공 후에만 서버가 30초 유효한 일회용 토큰을 발급합니다. 감독관의 명부 확인과 수동 얼굴 대조가 모두 일치해야 입실할 수 있습니다.</p>
 <label for="candidateKey">시연 응시자 로그인 키</label><br>
-<input id="candidateKey" type="password" autocomplete="off" value="demo-candidate-key" placeholder="응시자 로그인 키">
+<input id="candidateKey" type="password" autocomplete="off" placeholder="응시자 로그인 키">
 <div class="actions">
 <button id="loginCandidate" class="muted" type="button">응시자 로그인</button>
 <button id="issue">모의 인증 및 QR 발급</button>
@@ -82,7 +82,7 @@
 </div>
 <p class="small">시연 권한은 서버 시작 시 출력된 감독관 키로 확인합니다. 등록 사진과 현장 사진을 보고 직접 판정해 주세요.</p>
 <label for="proctorKey">시연 감독관 키</label><br>
-<input id="proctorKey" type="password" autocomplete="off" value="demo-proctor-key" placeholder="서버 시작 로그의 감독관 키">
+<input id="proctorKey" type="password" autocomplete="off" placeholder="Codespaces Secrets의 감독관 키">
 <div class="actions">
 <button id="loginProctor" class="muted" type="button">감독관 로그인</button>
 <button id="startScanner" type="button">카메라로 QR 스캔 시작</button>
@@ -137,7 +137,7 @@
 <h2>현장 책임자 예외 확인</h2>
 <p class="small">감독관 키와 별도로 현장 책임자 역할을 서버에서 확인합니다. 예외 절차는 시제품에 사전 설정된 모의 절차이며 기관의 실제 승인으로 간주되지 않습니다.</p>
 <label for="supervisorKey">시연 현장 책임자 키</label><br>
-<input id="supervisorKey" type="password" autocomplete="off" value="demo-supervisor-key" placeholder="서버 시작 로그의 현장 책임자 키">
+<input id="supervisorKey" type="password" autocomplete="off" placeholder="Codespaces Secrets의 현장 책임자 키">
 <div class="actions"><button id="loginSupervisor" class="muted" type="button">현장 책임자 로그인</button></div>
 <div class="policy-box"><strong>사전 설정된 모의 절차: 응시원서 원본 + 사진 + 직원 2인 확인</strong><p class="small">이름·생년월일·수험번호 또는 사진 하나만으로 승인할 수 없습니다. 모든 확인 항목과 책임자 확인이 필요하며, 미완료 시 보류 또는 거부됩니다.</p></div>
 <div class="checklist">
@@ -163,7 +163,7 @@
 <h2>관리자 대시보드</h2>
 <p class="small">시연 관리자 키로 SQLite 서버 기록을 조회합니다. 감독관 키와 별도의 권한입니다.</p>
 <label for="adminKey">시연 관리자 키</label><br>
-<input id="adminKey" type="password" autocomplete="off" value="demo-admin-key" placeholder="서버 시작 로그의 관리자 키">
+<input id="adminKey" type="password" autocomplete="off" placeholder="Codespaces Secrets의 관리자 키">
 <div class="actions"><button id="loginAdmin" class="muted" type="button">관리자 로그인</button><button id="loadDashboard">서버 기록 새로고침</button></div>
 <div id="adminStatus" class="status" aria-live="polite">관리자 인증 후 서버 기록을 불러오세요.</div>
 <fieldset id="adminKioskTestPanel" hidden>
@@ -222,9 +222,10 @@ let scanGeneration=0, scanInProgress=false, cameraStarting=false, tokenSubmissio
 let barcodeDetector=null, useZxingDecoder=false;
 const qrDecoderReady=typeof window.ExamSafeQrDecoder?.decodeCanvas==='function'
 	&&typeof window.ExamSafeQrDecoder?.decodeImage==='function';
-const DEMO_LOGIN_CREDENTIALS={candidate:{username:'candidate-demo',password:'candidate-demo-123'},proctor:{username:'proctor-demo',password:'proctor-demo-123'},admin:{username:'admin-demo',password:'admin-demo-123'},supervisor:{username:'supervisor-demo',password:'supervisor-demo-123'}};
+let csrfToken='';
 async function api(path,method='GET',body=null,role='',key=''){
 	const headers={'Content-Type':'application/json'};
+	if(method!=='GET'&&csrfToken)headers['X-CSRF-Token']=csrfToken;
 	if(role){headers['X-Demo-Role']=role;headers['X-Demo-Key']=key}
 	const response=await fetch(path,{method,headers,body:body===null?undefined:JSON.stringify(body),cache:'no-store',credentials:'same-origin'});
 	let data={};
@@ -236,8 +237,9 @@ async function loginAs(role){
 	const keyMap={candidate:$('candidateKey').value,proctor:$('proctorKey').value,admin:$('adminKey').value,supervisor:$('supervisorKey').value};
 	const key=keyMap[role];
 	if(!key){throw new Error(`${role==='candidate'?'응시자':role==='proctor'?'감독관':role==='supervisor'?'현장 책임자':'관리자'} 키를 입력해 주세요.`)}
-	const credentials=DEMO_LOGIN_CREDENTIALS[role];
-	return api('/api/login','POST',{role, demo_key:key, username:credentials.username, password:credentials.password});
+	const login=await api('/api/login','POST',{role, demo_key:key});
+	csrfToken=login.csrf_token||csrfToken;
+	return login;
 }
 function status(id,message,type=''){const el=$(id);el.textContent=message;el.className='status '+type}
 function renderVerifyState(){
@@ -740,7 +742,7 @@ $('reset').onclick=async()=>{
 };
 async function runSecurityTest(test){
 	if(test==='offline'){status('securityStatus','네트워크가 끊기면 서버 확인을 할 수 없으므로 입실을 승인하지 않습니다.','warn');return}
-	if(!$('proctorKey').value){status('securityStatus','서버 시작 로그의 감독관 키를 입력해 주세요.','bad');return}
+	if(!$('proctorKey').value){status('securityStatus','Codespaces Secrets의 감독관 키를 입력해 주세요.','bad');return}
 	try{
 		await loginAs('proctor');
 		await api('/api/demo/reset','POST',{},'proctor',$('proctorKey').value);

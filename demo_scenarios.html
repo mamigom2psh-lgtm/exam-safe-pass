@@ -47,8 +47,8 @@ table{border-collapse:collapse;width:100%;font-size:.9em}td,th{border:1px solid 
 <section id="loginSection" aria-labelledby="loginTitle">
 <h2 id="loginTitle">감독관 로그인 (DEMO 계정)</h2>
 <form id="loginForm" class="row">
-<label for="user">계정</label><input id="user" value="proctor-demo" autocomplete="username">
-<label for="pass">비밀번호</label><input id="pass" type="password" value="proctor-demo-123" autocomplete="current-password">
+<label for="user">계정</label><input id="user" autocomplete="username" placeholder="Codespaces Secrets에 설정한 계정">
+<label for="pass">비밀번호</label><input id="pass" type="password" autocomplete="current-password">
 <button class="primary" type="submit">로그인</button>
 </form>
 <p id="loginMsg" class="msg" role="status" aria-live="polite"></p>
@@ -93,12 +93,12 @@ table{border-collapse:collapse;width:100%;font-size:.9em}td,th{border:1px solid 
 const $=id=>document.getElementById(id);
 const STEPS=[['lookup','등록 정보 조회'],['capture','카메라 촬영'],['analyze','참고용 분석'],['review','감독관 확인'],['issue_qr','DEMO QR 발급'],['enter','입실 시연']];
 const REASONS={normal:'정상',document_mismatch:'서류 불일치',suspected_proxy:'대리응시 의심',identity_unverifiable:'신원 확인 불가'};
-let run=null, scenarios=[];
+let run=null, scenarios=[], csrfToken='';
 const text=(el,t)=>{el.textContent=t};
 async function api(method,path,body){
   const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),10000);
   try{
-    const res=await fetch(path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:ctl.signal});
+    const res=await fetch(path,{method,credentials:'same-origin',headers:method==='GET'?{'Content-Type':'application/json'}:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:body?JSON.stringify(body):undefined,signal:ctl.signal});
     const data=await res.json().catch(()=>({}));
     return {ok:res.ok,status:res.status,data};
   }catch(e){
@@ -193,6 +193,7 @@ $('loginForm').onsubmit=async e=>{
   e.preventDefault();
   const r=await api('POST','/api/login',{role:'proctor',username:$('user').value,password:$('pass').value});
   if(!r.ok){text($('loginMsg'),r.data.error||'로그인에 실패했습니다.');$('loginMsg').classList.add('err');return}
+  csrfToken=r.data.csrf_token||'';
   await loadApp();
 };
 $('startBtn').onclick=start;

@@ -744,12 +744,13 @@ async function loadRegisteredPhoto(url){
 	image.hidden=false;
 	await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=registeredPhotoObjectUrl});
 }
+let csrfToken='';
 async function api(path,body){
 	const controller=new AbortController();
 	const timer=window.setTimeout(()=>controller.abort(),API_TIMEOUT_MS);
 	let response;
 	try{
-		response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',credentials:'same-origin',signal:controller.signal});
+		response=await fetch(path,{method:'POST',headers:csrfToken?{'Content-Type':'application/json','X-CSRF-Token':csrfToken}:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',credentials:'same-origin',signal:controller.signal});
 	}catch(error){
 		throw new Error(error?.name==='AbortError'
 			?'서버 응답 시간이 초과되었습니다. 다시 시도하거나 감독관 확인을 요청하세요. 인증은 완료되지 않았습니다.'
@@ -760,6 +761,7 @@ async function api(path,body){
 	let data;
 	try{data=await response.json()}catch(error){throw new Error('서버 응답을 확인할 수 없습니다.')}
 	if(!response.ok)throw new Error(data.error||`요청 실패 (${response.status})`);
+	if(path==='/api/login'&&data.csrf_token)csrfToken=data.csrf_token;
 	return data;
 }
 async function createSession(){

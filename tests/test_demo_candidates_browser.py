@@ -26,15 +26,15 @@ class DemoCandidatesBrowserTests(unittest.TestCase):
         self.errors = []
         page.on("pageerror", lambda e: self.errors.append(str(e)))
         page.goto(self.api.base_url + "/demo-candidates")
-        self.assertTrue(page.is_hidden("#adminArea"))  # nothing is shown before the server accepts the login
+        self.assertEqual(page.locator("#adminArea").count(), 0)  # login form only; the admin page is not served yet
         page.fill("#adminUser", "admin-demo")
         page.fill("#adminPass", "wrong")
         page.click("#loginForm button[type=submit]")
-        page.wait_for_selector("#status.bad")
-        self.assertTrue(page.is_hidden("#adminArea"))
-        page.fill("#adminPass", "admin-demo-123")
+        page.wait_for_selector("#status:not([hidden])")
+        self.assertEqual(page.locator("#adminArea").count(), 0)
+        page.fill("#adminPass", ts.ADMIN_PASSWORD)
         page.click("#loginForm button[type=submit]")
-        page.wait_for_selector("#adminArea:not([hidden])")
+        page.wait_for_selector("#adminArea")
         return page
 
     def test_admin_adds_candidate_with_cascading_exam_fields_and_uploads_photo(self):

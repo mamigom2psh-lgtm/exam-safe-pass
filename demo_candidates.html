@@ -38,17 +38,8 @@ th,td{border-bottom:1px solid #d6dee8;padding:8px;text-align:left;vertical-align
 <div class="notice" role="note">이 화면의 모든 응시자·시험 정보는 <strong>시연용 가상 데이터</strong>입니다. 가상 코드에 실제 주민등록번호(일부 포함)를 입력하지 마세요. 시험 목록은 실제 시험 운영기관과 연동된 데이터가 아닙니다. 등록 사진은 사용자가 직접 업로드한 파일만 사용하며 Git에 올라가지 않습니다.</div>
 <div class="status" id="status" role="status" aria-live="polite" hidden></div>
 
-<section id="loginSection">
-<h2>관리자 로그인</h2>
-<p>서버가 관리자 권한을 확인합니다. 로그인하지 않으면 데이터를 조회할 수 없습니다.</p>
-<form id="loginForm" class="grid">
-<div><label for="adminUser">DEMO 관리자 계정</label><input id="adminUser" autocomplete="username"></div>
-<div><label for="adminPass">비밀번호</label><input id="adminPass" type="password" autocomplete="current-password"></div>
-<div><button type="submit">로그인</button></div>
-</form>
-</section>
-
-<div id="adminArea" hidden>
+<div id="adminArea">
+<button id="logoutButton" type="button" class="secondary">로그아웃</button>
 <section>
 <h2>응시자 목록</h2>
 <button id="seedButton" type="button" class="secondary">가상 테스트 응시자 5명 등록 (사진은 배정하지 않음)</button>
@@ -221,18 +212,18 @@ $('examForm').onsubmit=async event=>{
 	await act(()=>id?call('PUT',`/api/admin/demo-exams/${id}`,body):call('POST','/api/admin/demo-exams',body),'시험 목록을 저장했습니다.');
 	$('examForm').reset();$('examEditId').value='';
 };
-$('loginForm').onsubmit=async event=>{
-	event.preventDefault();
-	try{
-		const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',
-			body:JSON.stringify({role:'admin',username:$('adminUser').value,password:$('adminPass').value})});
-		const data=await response.json();
-		if(!response.ok)throw new Error(data.error||'로그인하지 못했습니다.');
-		csrf=data.csrf_token;$('adminPass').value='';
-		$('loginSection').hidden=true;$('adminArea').hidden=false;
-		await refresh();say('관리자로 로그인했습니다.','good');
-	}catch(error){say(error.message,'bad')}
+$('logoutButton').onclick=async()=>{
+	try{await call('POST','/api/logout',{})}catch(error){}
+	location.reload();
 };
+(async()=>{
+	try{
+		const response=await fetch('/api/admin/session',{cache:'no-store',credentials:'same-origin'});
+		if(!response.ok){location.reload();return}
+		csrf=(await response.json()).csrf_token||'';
+		await refresh();
+	}catch(error){say(error.message,'bad')}
+})();
 </script>
 </body>
 </html>

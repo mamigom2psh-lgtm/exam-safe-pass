@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import sqlite3
+import sys
 import threading
 import time
 import uuid
@@ -36,6 +37,8 @@ from self_identity_provider import MockSelfIdentityProvider
 import demo_scenarios
 import verification_policy
 import demo_candidates
+import auth_config
+import session_store
 
 
 ROOT = Path(__file__).resolve().parent
@@ -53,10 +56,39 @@ KIOSK_BROWSER_ASSERTION_FIELDS = frozenset({
     "real_authentication", "liveness", "score", "verified",
 })
 EXAM_ID = "exam-demo-2026"
-# Active DEMO candidates, rebuilt from the demo_candidates table (see demo_candidates.py).
-# Only active registrations are present, so inactive/deleted candidates can never start a kiosk session.
-ROSTER: dict[tuple[str, str], dict[str, str]] = {}
-ROSTER_LOCK = threading.Lock()
+class CandidateGone(KeyError):
+    """A session refers to a candidate that is missing or deactivated; mapped to a safe 409."""
+
+
+class RosterView:
+    """Always-fresh view of active DEMO candidates read from the registry table.
+
+    There is no cached copy, so a deactivated or deleted candidate disappears from every code path at once.
+    A direct lookup of a missing candidate raises CandidateGone, which the request wrapper turns into a 409.
+    """
+
+    def _active(self) -> dict[tuple[str, str], dict[str, str]]:
+        with connect_db() as connection:
+            active = demo_candidates.active_roster(connection)
+        return {(EXAM_ID, candidate_id): info for candidate_id, info in active.items()}
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._active()
+
+    def __getitem__(self, key: tuple[str, str]) -> dict[str, str]:
+        try:
+            return self._active()[key]
+        except KeyError:
+            raise CandidateGone(key) from None
+
+    def __len__(self) -> int:
+        return len(self._active())
+
+    def items(self):
+        return self._active().items()
+
+
+ROSTER = RosterView()
 DEMO_INFO_MAX_ATTEMPTS = 5
 # Server-side permission for the preset DEMO simulation. It never enables operational issuance.
 DEMO_SIMULATION_ENABLED = os.environ.get("EXAM_SAFE_DEMO_SIMULATION", "1") != "0"
@@ -77,25 +109,6 @@ VENDOR_FILES = {
     "human/models/facemesh.bin",
     "human/models/antispoof.json",
     "human/models/antispoof.bin",
-}
-DEMO_ACCOUNTS = {
-    "candidate": {
-        "username": "candidate-demo",
-        "password": "candidate-demo-123",
-        "candidate_id": "candidate-001",
-    },
-    "proctor": {
-        "username": "proctor-demo",
-        "password": "proctor-demo-123",
-    },
-    "admin": {
-        "username": "admin-demo",
-        "password": "admin-demo-123",
-    },
-    "supervisor": {
-        "username": "supervisor-demo",
-        "password": "supervisor-demo-123",
-    },
 }
 MOCK_ALLOWED_ID_TYPES = {"resident_card", "driver_license", "passport"}
 MOCK_EXCEPTION_PROCEDURES = {"dual_staff_application_review"}
@@ -280,17 +293,6 @@ def initialize_db() -> None:
             """
         )
         demo_candidates.init_schema(connection)
-    refresh_roster()
-
-
-def refresh_roster() -> None:
-    with connect_db() as connection:
-        active = demo_candidates.active_roster(connection)
-    fresh = {(EXAM_ID, candidate_id): info for candidate_id, info in active.items()}
-    with ROSTER_LOCK:
-        for key in [key for key in ROSTER if key not in fresh]:
-            del ROSTER[key]
-        ROSTER.update(fresh)
 
 
 def token_digest(token: str) -> str:
@@ -423,6 +425,9 @@ class DemoServer(ThreadingHTTPServer):
 
 class RequestHandler(BaseHTTPRequestHandler):
     server_version = "ExamSafePassDemo/3.0"
+    # Small responses stay buffered until the handler returns, i.e. after _guarded has flushed session changes to
+    # SQLite, so a client that sees a reply can rely on its session state surviving a restart.
+    wbufsize = 1 << 16
 
     def log_message(self, fmt: str, *args: object) -> None:
         print(f"[http] {self.address_string()} {fmt % args}", flush=True)
@@ -446,7 +451,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_file(self, path: Path) -> None:
+    def _send_file(self, path: Path, status: int = 200) -> None:
         try:
             body = path.read_bytes()
         except OSError:
@@ -460,10 +465,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             ".json": "application/json; charset=utf-8",
             ".txt": "text/plain; charset=utf-8",
         }.get(path.suffix, "application/octet-stream")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
@@ -492,7 +498,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         session_cookie = cookies.get("demo_session_id")
         return session_cookie.value if session_cookie else ""
 
-    def _current_session_role(self) -> str | None:
+    def _current_session(self) -> dict | None:
         session_id = self._session_id()
         if not session_id:
             return None
@@ -502,17 +508,31 @@ class RequestHandler(BaseHTTPRequestHandler):
         if session.get("expires_at", 0) <= time.time():
             self.server.sessions.pop(session_id, None)
             return None
-        return session.get("role")
+        return session
+
+    def _current_session_role(self) -> str | None:
+        session = self._current_session()
+        return session.get("role") if session else None
+
+    def _csrf_ok(self, session: dict) -> bool:
+        supplied = self.headers.get("X-CSRF-Token", "")
+        return bool(session.get("csrf")) and hmac.compare_digest(supplied, session["csrf"])
 
     def _require_role(self, role: str) -> bool:
-        session_role = self._current_session_role()
-        if session_role == role:
-            return True
-        expected = self.server.role_keys.get(role)
+        session = self._current_session()
+        session_role = session.get("role") if session else None
+        mutating = self.command in ("POST", "PUT", "PATCH", "DELETE")
         supplied = self.headers.get("X-Demo-Key", "")
         supplied_role = self.headers.get("X-Demo-Role", "")
+        expected = self.server.auth.role_keys.get(role)
         if expected and supplied_role == role and hmac.compare_digest(supplied, expected):
             return True
+        if session_role == role:
+            # A cookie alone is ambient authority, so state changes also need the per-session CSRF token.
+            if not mutating or self._csrf_ok(session):
+                return True
+            self._send_json(403, {"error": "CSRF 토큰이 올바르지 않습니다. 다시 로그인해 주세요."})
+            return False
         with connect_db() as connection:
             write_event(
                 connection,
@@ -531,7 +551,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self._current_session_role() in roles:
             return True
         supplied_role = self.headers.get("X-Demo-Role", "")
-        expected = self.server.role_keys.get(supplied_role)
+        expected = self.server.auth.role_keys.get(supplied_role)
         return bool(
             supplied_role in roles
             and expected
@@ -539,16 +559,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
 
     def _admin_ok(self, mutating: bool) -> bool:
-        """Server-side admin check. Cookie sessions must also present the per-session CSRF token on writes."""
-        if not self._require_role("admin"):
-            return False
-        if mutating and self._current_session_role() == "admin":
-            session = self.server.sessions.get(self._session_id()) or {}
-            supplied = self.headers.get("X-CSRF-Token", "")
-            if not session.get("csrf") or not hmac.compare_digest(supplied, session["csrf"]):
-                self._send_json(403, {"error": "CSRF 토큰이 올바르지 않습니다. 다시 로그인해 주세요."})
-                return False
-        return True
+        """Server-side admin check; cookie-session writes are CSRF-checked inside _require_role."""
+        return self._require_role("admin")
 
     def _read_binary(self, limit: int) -> bytes | None:
         try:
@@ -559,6 +571,25 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json(413 if length > limit else 400, {"error": "업로드 크기가 올바르지 않습니다. (최대 5MB)"})
             return None
         return self.rfile.read(length)
+
+    def _revoke_inactive_candidate_sessions(self) -> None:
+        """Invalidate kiosk sessions, candidate logins and unused QR tokens of missing/deactivated candidates."""
+        active = {candidate_id for (_, candidate_id), _ in ROSTER.items()}
+        stale = lambda session: bool(session.get("candidate_id")) and session["candidate_id"] not in active
+        removed = self.server.kiosk_sessions.remove_where(stale)
+        removed += self.server.sessions.remove_where(stale)
+        now = time.time()
+        marks = ",".join("?" for _ in active)
+        clause = f"AND candidate_id NOT IN ({marks})" if active else ""
+        with connect_db() as connection:
+            for table in ("demo_tokens", "tokens"):
+                connection.execute(
+                    f"UPDATE {table} SET used_at = ? WHERE used_at IS NULL AND expires_at > ? {clause}",
+                    (now, now, *active),
+                )
+            if removed:
+                write_event(connection, "비활성 응시자 세션 무효화", "info", exam_id=EXAM_ID, actor="admin",
+                            details=f"invalidated_sessions={removed}")
 
     def _registry_audit(self, action: str, candidate_id: str | None = None, status: str = "accepted") -> None:
         with connect_db() as connection:
@@ -636,7 +667,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("overwrite_numbers 형식이 올바르지 않습니다.")
                 with connect_db() as connection:
                     result = demo_candidates.seed(connection, overwrite)
-                refresh_roster()
+                self._revoke_inactive_candidate_sessions()
                 self._registry_audit("가상 응시자 시드 등록")
                 result["needs_admin_confirmation"] = bool(result["conflicts"])
                 result["photos_assigned"] = False
@@ -646,21 +677,21 @@ class RequestHandler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 with connect_db() as connection:
                     result = demo_candidates.reset(connection, payload.get("confirm"))
-                refresh_roster()
+                self._revoke_inactive_candidate_sessions()
                 self._registry_audit("테스트 데이터 초기화")
                 self._send_json(200, result)
                 return
             if method == "POST" and len(parts) == 1:
                 with connect_db() as connection:
                     candidate = demo_candidates.create_candidate(connection, self._read_json())
-                refresh_roster()
+                self._revoke_inactive_candidate_sessions()
                 self._registry_audit("응시자 추가", candidate["id"])
                 self._send_json(201, {"candidate": candidate})
                 return
             if len(parts) == 2 and method == "PUT":
                 with connect_db() as connection:
                     candidate = demo_candidates.update_candidate(connection, parts[1], self._read_json())
-                refresh_roster()
+                self._revoke_inactive_candidate_sessions()
                 self._registry_audit("응시자 수정", parts[1])
                 self._send_json(200, {"candidate": candidate})
                 return
@@ -675,7 +706,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 confirm = parse_qs(urlparse(self.path).query).get("confirm", [None])[0]
                 with connect_db() as connection:
                     demo_candidates.delete_candidate(connection, parts[1], confirm)
-                refresh_roster()
+                self._revoke_inactive_candidate_sessions()
                 self._registry_audit("응시자 삭제(사진은 로컬 백업)", parts[1])
                 self._send_json(200, {"deleted": True, "photo_backup": "demo_photos/backup (local, not deleted)"})
                 return
@@ -690,20 +721,60 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
         self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
 
+    def _guarded(self, handler) -> None:
+        """Origin allow-list for state changes and safe mapping of vanished candidates to a 409."""
+        try:
+            if self.command in ("POST", "PUT", "PATCH", "DELETE") and not auth_config.origin_allowed(
+                self.headers, self.server.auth.allowed_origins
+            ):
+                with connect_db() as connection:
+                    write_event(connection, "허용되지 않은 Origin", "blocked", actor="unknown",
+                                details="state-changing request rejected by origin allow-list")
+                self._send_json(403, {"error": "허용되지 않은 출처(Origin)의 요청입니다."})
+                return
+            handler()
+        except CandidateGone:
+            self._send_json(
+                409,
+                {
+                    "error": "응시자 정보가 비활성화되었거나 삭제되어 요청을 처리할 수 없습니다. 키오스크를 처음부터 다시 시작하거나 감독관에게 문의하세요.",
+                    "restart_required": True,
+                },
+            )
+        finally:
+            for store in (self.server.sessions, self.server.kiosk_sessions):
+                store.flush()
+
     def do_PUT(self) -> None:
+        self._guarded(self._handle_PUT)
+
+    def do_DELETE(self) -> None:
+        self._guarded(self._handle_DELETE)
+
+    def do_GET(self) -> None:
+        self._guarded(self._handle_GET)
+
+    def do_POST(self) -> None:
+        self._guarded(self._handle_POST)
+
+    def _handle_PUT(self) -> None:
         if not self._registry_route("PUT", urlparse(self.path).path):
             self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
 
-    def do_DELETE(self) -> None:
+    def _handle_DELETE(self) -> None:
         if not self._registry_route("DELETE", urlparse(self.path).path):
             self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
 
-    def do_GET(self) -> None:
+    def _handle_GET(self) -> None:
         path = urlparse(self.path).path
         if self._registry_route("GET", path):
             return
         if path == "/demo-candidates":
-            self._send_file(ROOT / "demo_candidates.html")
+            # The admin page itself needs an admin cookie session; otherwise only a data-free login form is shown.
+            if self._current_session_role() == "admin":
+                self._send_file(ROOT / "demo_candidates.html")
+            else:
+                self._send_file(ROOT / "admin_login.html", status=401)
             return
         if path == "/":
             self._send_file(ROOT / "index.html")
@@ -825,9 +896,17 @@ class RequestHandler(BaseHTTPRequestHandler):
                 {
                     "logged_in": session_role is not None,
                     "role": session_role or "guest",
-                    "candidate_id": DEMO_ACCOUNTS.get(session_role, {}).get("candidate_id"),
+                    "candidate_id": (self.server.auth.accounts.get(session_role) or {}).get("candidate_id"),
                 },
             )
+            return
+        if path == "/api/admin/session":
+            # Lets the admin page (already behind the cookie session) obtain its CSRF token after a reload.
+            session = self._current_session()
+            if not session or session.get("role") != "admin":
+                self._send_json(401, {"error": "관리자 로그인이 필요합니다."})
+                return
+            self._send_json(200, {"role": "admin", "csrf_token": session.get("csrf")})
             return
         if path == "/api/kiosk/requests":
             if not self._require_role("proctor"):
@@ -850,12 +929,15 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         self._send_json(404, {"error": "요청한 경로를 찾을 수 없습니다."})
 
-    def do_POST(self) -> None:
+    def _handle_POST(self) -> None:
         path = urlparse(self.path).path
         if self._registry_route("POST", path):
             return
         if path == "/api/login":
             self._login()
+            return
+        if path == "/api/logout":
+            self._logout()
             return
         if path == "/api/token":
             self._issue_token()
@@ -2598,30 +2680,57 @@ class RequestHandler(BaseHTTPRequestHandler):
         password = payload.get("password")
         demo_key = payload.get("demo_key") or payload.get("key")
 
-        if role not in DEMO_ACCOUNTS:
+        if not isinstance(role, str) or role not in auth_config.ROLES:
             self._send_json(400, {"error": "로그인 역할을 선택해 주세요."})
             return
-
-        account = DEMO_ACCOUNTS[role]
-        if (
-            username is not None
-            and username != account["username"]
-            or password is not None
-            and password != account["password"]
-        ):
-            self._send_json(401, {"error": "시연 계정 정보가 올바르지 않습니다."})
+        account = self.server.auth.accounts.get(role)
+        if account is None:
+            self._send_json(503, {"error": "이 역할의 로그인 비밀정보가 서버에 설정되지 않았습니다. 관리자에게 문의하세요."})
             return
-
         if username is None and password is None and demo_key is None:
             self._send_json(400, {"error": "시연 계정 또는 키를 입력해 주세요."})
             return
-
-        expected_key = self.server.role_keys.get(role)
-        if demo_key is not None and expected_key and not hmac.compare_digest(demo_key, expected_key):
-            self._send_json(401, {"error": "시연 키가 올바르지 않습니다."})
+        if any(value is not None and not isinstance(value, str) for value in (username, password, demo_key)):
+            self._send_json(400, {"error": "로그인 입력 형식이 올바르지 않습니다."})
             return
 
-        session_id = uuid.uuid4().hex
+        # Failures are counted per client address and role. X-Forwarded-For is deliberately not trusted.
+        limiter_key = f"{self.client_address[0]}|{role}"
+        wait = self.server.login_limiter.retry_after(limiter_key)
+        if wait:
+            self._send_json(
+                429,
+                {"error": f"로그인 시도가 너무 많습니다. {wait}초 후 다시 시도해 주세요."},
+                extra_headers={"Retry-After": str(wait)},
+            )
+            return
+
+        expected_key = self.server.auth.role_keys.get(role)
+        valid = True
+        if username is not None or password is not None:
+            stored = account.get("password_hash", "")
+            valid = bool(
+                stored
+                and username is not None
+                and hmac.compare_digest(username.encode(), account["username"].encode())
+                and password is not None
+                and auth_config.verify_password(password, stored)
+            )
+        if valid and demo_key is not None:
+            valid = bool(expected_key and hmac.compare_digest(demo_key.encode(), expected_key.encode()))
+        if not valid:
+            self.server.login_limiter.record_failure(limiter_key)
+            with connect_db() as connection:
+                write_event(connection, "로그인 실패", "blocked", actor=role, details="invalid credentials")
+            self._send_json(401, {"error": "시연 계정 정보가 올바르지 않습니다."})
+            return
+        self.server.login_limiter.reset(limiter_key)
+
+        # Session fixation: any cookie presented at login is revoked and a fresh id is always issued.
+        previous = self._session_id()
+        if previous:
+            self.server.sessions.pop(previous, None)
+        session_id = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(24)
         self.server.sessions[session_id] = {
             "csrf": csrf_token,
@@ -2638,12 +2747,32 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "csrf_token": csrf_token,
                 "message": "데모 세션에 로그인했습니다.",
             },
-            extra_headers={
-                "Set-Cookie": (
-                    f"demo_session_id={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECONDS}"
-                )
-            },
+            extra_headers={"Set-Cookie": self._session_cookie(session_id, SESSION_TTL_SECONDS)},
         )
+
+    def _session_cookie(self, value: str, max_age: int) -> str:
+        secure = (
+            self.server.cookie_secure
+            or self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower() == "https"
+        )
+        return (
+            f"demo_session_id={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
+            + ("; Secure" if secure else "")
+        )
+
+    def _logout(self) -> None:
+        try:
+            self._read_json()
+        except ValueError:
+            pass
+        session_id = self._session_id()
+        session = self._current_session()
+        if session and not self._csrf_ok(session):
+            self._send_json(403, {"error": "CSRF 토큰이 올바르지 않습니다."})
+            return
+        if session_id:
+            self.server.sessions.pop(session_id, None)
+        self._send_json(200, {"success": True}, extra_headers={"Set-Cookie": self._session_cookie("", 0)})
 
     def _issue_token(self) -> None:
         try:
@@ -3966,32 +4095,56 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"message": "시연 상태를 초기화했습니다. 기록은 보존됩니다."})
 
 
-def main() -> None:
+def create_server(host: str, port: int, environ: dict[str, str] | None = None) -> DemoServer:
+    """Build the server. Raises auth_config.ConfigError when required admin secrets are missing or insecure."""
+    environ = dict(os.environ if environ is None else environ)
+    auth = auth_config.load_auth_config(environ, port)
     initialize_db()
-    role_keys = {
-        "candidate": os.environ.get("EXAM_SAFE_CANDIDATE_KEY") or "demo-candidate-key",
-        "proctor": os.environ.get("EXAM_SAFE_PROCTOR_KEY") or "demo-proctor-key",
-        "admin": os.environ.get("EXAM_SAFE_ADMIN_KEY") or "demo-admin-key",
-        "supervisor": os.environ.get("EXAM_SAFE_SUPERVISOR_KEY") or "demo-supervisor-key",
-    }
+    server = DemoServer((host, port), RequestHandler)
+    if port == 0:
+        auth.allowed_origins = auth_config.trusted_origins(environ, server.server_address[1])
+    server.auth = auth
+    server.cookie_secure = environ.get("EXAM_SAFE_COOKIE_SECURE", "") == "1"
+    server.login_limiter = auth_config.LoginRateLimiter(
+        max_failures=int(environ.get("EXAM_SAFE_LOGIN_MAX_FAILURES", "5")),
+        window_seconds=int(environ.get("EXAM_SAFE_LOGIN_WINDOW_SECONDS", "300")),
+    )
+    server.sessions = session_store.PersistentSessions(
+        connect_db, "auth", lambda item: item.get("expires_at", 0), hash_keys=True
+    )
+    server.kiosk_sessions = session_store.PersistentSessions(
+        connect_db, "kiosk", lambda item: item.get("last_activity", 0) + KIOSK_SESSION_TTL_SECONDS
+    )
+    server.kiosk_lock = threading.RLock()
+    server.scenario_sandbox = demo_scenarios.ScenarioSandbox(qr_factory=RequestHandler._generate_qr_png)
+    try:
+        os.chmod(DATABASE, 0o600)
+    except OSError:
+        pass
+    return server
+
+
+def main() -> None:
+    auth_config.load_env_file(ROOT / ".env")
     host = os.environ.get("EXAM_SAFE_HOST", "127.0.0.1")
     port = int(os.environ.get("EXAM_SAFE_PORT", "8000"))
-    server = DemoServer((host, port), RequestHandler)
-    server.role_keys = role_keys
-    server.sessions = {}
-    server.kiosk_sessions = {}
-    server.kiosk_lock = threading.Lock()
-    server.scenario_sandbox = demo_scenarios.ScenarioSandbox(qr_factory=RequestHandler._generate_qr_png)
-    print(f"시연 응시자 키: {role_keys['candidate']}", flush=True)
-    print(f"시연 감독관 키: {role_keys['proctor']}", flush=True)
-    print(f"시연 관리자 키: {role_keys['admin']}", flush=True)
-    print(f"시연 현장 책임자 키: {role_keys['supervisor']}", flush=True)
+    try:
+        server = create_server(host, port)
+    except auth_config.ConfigError as exc:
+        print(f"서버를 시작할 수 없습니다.\n{exc}\n"
+              "해결: python3 tools/generate_secrets.py 로 값을 만들고 Codespaces Secrets(또는 .env)에 설정하세요.",
+              file=sys.stderr, flush=True)
+        raise SystemExit(2)
+    for warning in server.auth.warnings:
+        print(f"[경고] {warning}", flush=True)
     print(f"LISTENING http://{host}:{server.server_address[1]}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n서버를 종료합니다.", flush=True)
     finally:
+        server.sessions.flush()
+        server.kiosk_sessions.flush()
         server.server_close()
 
 

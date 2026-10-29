@@ -13,7 +13,7 @@ try:
 except ImportError:  # pragma: no cover
     sync_playwright = None
 
-PROCTOR_PASSWORD = "proctor-demo-123"
+PROCTOR_PASSWORD = ts.PROCTOR_PASSWORD
 
 
 @unittest.skipIf(sync_playwright is None, "playwright is not installed")

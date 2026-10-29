@@ -23,6 +23,13 @@ def make_png(width=320, height=320, shade=100):
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
+def pixels(data: bytes) -> bytes:
+    """Stored photos are re-encoded by the server, so compare decoded pixels rather than raw bytes."""
+    from PIL import Image
+    import io
+    return Image.open(io.BytesIO(data)).convert("RGB").tobytes()
+
+
 class RegistryBase(unittest.TestCase):
     setUpClass = classmethod(ts.ServerScenarios.setUpClass.__func__)
     tearDownClass = classmethod(ts.ServerScenarios.tearDownClass.__func__)
@@ -84,13 +91,15 @@ class AdminAndSeedTests(RegistryBase):
         self.assertEqual(self.raw("GET", "/api/admin/demo-candidates", headers={"X-Demo-Role": "admin", "X-Demo-Key": "wrong"})[0], 403)
         self.assertEqual(self.raw("POST", "/api/admin/demo-candidates", {"name": "x"})[0], 403)
         self.assertEqual(self.raw("DELETE", "/api/admin/demo-candidates/candidate-001?confirm=2026-0012")[0], 403)
-        self.assertEqual(self.raw("GET", "/demo-candidates")[0], 200)  # shell only; contains no data
+        status, _, page = self.raw("GET", "/demo-candidates")
+        self.assertEqual(status, 401)  # unauthenticated: only the data-free login form is returned
+        self.assertNotIn("candidate-001".encode(), page)
         status, body = self.admin("GET", "/api/admin/demo-candidates")
         self.assertEqual(status, 200)
         self.assertNotIn("980320", json.dumps(body))  # virtual codes are masked in the list
 
     def test_cookie_session_writes_need_csrf_token(self):
-        status, headers, content = self.raw("POST", "/api/login", {"role": "admin", "username": "admin-demo", "password": "admin-demo-123"})
+        status, headers, content = self.raw("POST", "/api/login", {"role": "admin", "username": "admin-demo", "password": ts.ADMIN_PASSWORD})
         self.assertEqual(status, 200)
         cookie = headers["Set-Cookie"].split(";")[0]
         token = json.loads(content)["csrf_token"]
@@ -240,9 +249,10 @@ class PhotoTests(RegistryBase):
         url = f"/api/candidate-photo/{a['id']}"
         self.assertEqual(self.raw("GET", url)[0], 403)  # anonymous
         status, headers, content = self.raw("GET", url, headers={"X-Demo-Role": "admin", "X-Demo-Key": ts.ADMIN_KEY})
-        self.assertEqual((status, headers["Content-Type"], content), (200, "image/png", make_png(shade=20)))
+        self.assertEqual((status, headers["Content-Type"]), (200, "image/png"))
+        self.assertEqual(pixels(content), pixels(make_png(shade=20)))
         self.assertIn("no-store", headers["Cache-Control"])
-        self.assertEqual(self.raw("GET", url, headers={"X-Demo-Role": "candidate", "X-Demo-Key": "demo-candidate-key"})[0], 403)
+        self.assertEqual(self.raw("GET", url, headers={"X-Demo-Role": "candidate", "X-Demo-Key": ts.CANDIDATE_KEY})[0], 403)
         self.assertEqual(self.raw("GET", "/images/2026-0012-registration.jpg")[0], 404)  # no public static photos
         self.assertEqual(self.raw("GET", f"/api/candidate-photo/..%2F..%2Fserver.py", headers={"X-Demo-Role": "admin", "X-Demo-Key": ts.ADMIN_KEY})[0], 404)
 
@@ -253,7 +263,8 @@ class PhotoTests(RegistryBase):
         self.assertEqual(status, 200, record)
         self.assertEqual(record["registered_photo_url"], f"/api/candidate-photo/{a['id']}")
         own = self.raw("GET", record["registered_photo_url"], headers={"X-Kiosk-Session": sid})
-        self.assertEqual((own[0], own[2]), (200, make_png(shade=20)))
+        self.assertEqual(own[0], 200)
+        self.assertEqual(pixels(own[2]), pixels(make_png(shade=20)))
         other = self.raw("GET", f"/api/candidate-photo/{b['id']}", headers={"X-Kiosk-Session": sid})
         self.assertEqual(other[0], 403)  # B's photo can never be mixed into A's session
         self.assertEqual(self.raw("GET", record["registered_photo_url"], headers={"X-Kiosk-Session": "forged"})[0], 403)
@@ -282,7 +293,7 @@ class PhotoTests(RegistryBase):
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM demo_candidates").fetchone()[0], 2)
                 row = connection.execute("SELECT * FROM demo_candidates WHERE id = 'candidate-001'").fetchone()
                 self.assertEqual((row["name"], row["number"]), ("박세현", "2026-0012"))
-                self.assertEqual((tmp / "photos" / row["photo_file"]).read_bytes(), make_png(shade=77))
+                self.assertEqual(pixels((tmp / "photos" / row["photo_file"]).read_bytes()), pixels(make_png(shade=77)))
                 self.assertTrue((legacy_dir / "2026-0012-registration.jpg").exists())
                 self.assertIsNone(connection.execute("SELECT photo_file FROM demo_candidates WHERE id = 'candidate-002'").fetchone()[0])
                 connection.close()
@@ -367,7 +378,7 @@ class KioskIntegrationTests(RegistryBase):
         sid, _, _ = self.kiosk("2027-8400")
         self.info(sid, "990101-1", COMPUTER, "2급")
         self.admin("PUT", f"/api/admin/demo-candidates/{cand['id']}", {"active": False})
-        self.assertEqual(self.issue(sid)[0], 409)
+        self.assertIn(self.issue(sid)[0], (409, 410))  # session invalidated: safe 4xx, never 500
         self.assertEqual(self.db("SELECT COUNT(*) FROM demo_tokens WHERE candidate_id = ?", cand["id"]), [(0,)])
 
     def test_registry_qr_expiry_reuse_and_operational_rejection(self):

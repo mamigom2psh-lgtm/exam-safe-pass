@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>관리자 로그인 · 시험장 안심패스 플러스</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Noto Sans KR",sans-serif;font-size:18px;background:#f3f6fa;color:#14202e}
+header{background:#12355b;color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:24px}
+main{max-width:520px;margin:0 auto;padding:18px}
+section{background:#fff;border:1px solid #c5d0dc;border-radius:12px;padding:18px}
+label{display:block;font-weight:700;margin:12px 0 6px}
+input,button{font:inherit;padding:10px 12px;border-radius:8px;border:2px solid #71849a;min-height:44px;width:100%}
+button{background:#12355b;color:#fff;border-color:#12355b;cursor:pointer;margin-top:14px}
+button:focus-visible,input:focus-visible{outline:3px solid #f5a623;outline-offset:2px}
+.status{margin:10px 0;padding:10px 14px;border-radius:8px;background:#fde8e8;color:#7a1212}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>DEMO 관리자 로그인</h1></header>
+<main>
+<section>
+<p>관리자 인증이 필요한 화면입니다. 로그인하기 전에는 응시자 정보나 사진이 표시되지 않습니다. 계정과 비밀번호는 서버 환경변수(Codespaces Secrets)에 설정된 값입니다.</p>
+<div class="status" id="status" role="alert" hidden></div>
+<form id="loginForm">
+<label for="adminUser">관리자 계정</label>
+<input id="adminUser" autocomplete="username">
+<label for="adminPass">비밀번호</label>
+<input id="adminPass" type="password" autocomplete="current-password">
+<button type="submit">로그인</button>
+</form>
+</section>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+$('loginForm').onsubmit=async event=>{
+	event.preventDefault();
+	try{
+		const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',
+			body:JSON.stringify({role:'admin',username:$('adminUser').value,password:$('adminPass').value})});
+		const data=await response.json().catch(()=>({}));
+		if(!response.ok)throw new Error(data.error||'로그인하지 못했습니다.');
+		$('adminPass').value='';
+		location.reload();
+	}catch(error){const box=$('status');box.hidden=false;box.textContent=error.message}
+};
+</script>
+</body>
+</html>

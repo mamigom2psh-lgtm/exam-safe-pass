@@ -26,3 +26,8 @@ test_backups/
 
 # Registration photos (DEMO) and local backups
 demo_photos/
+
+# Secrets: only .env.example (names and descriptions, no values) may be tracked.
+.env
+.env.*
+!.env.example

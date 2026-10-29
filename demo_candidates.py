@@ -6,15 +6,18 @@ served by authenticated server routes. This module never logs names, codes, phot
 """
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import secrets
 import shutil
 import sqlite3
-import struct
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
+
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parent
 PHOTO_DIR = Path(os.environ.get("EXAM_SAFE_PHOTO_DIR", ROOT / "demo_photos"))
@@ -173,10 +176,10 @@ def _copy_legacy_photo(source: Path) -> str | None:
         return None
     data = source.read_bytes()
     try:
-        ext = inspect_image(data)[0]
+        ext, _, _, clean = sanitize_image(data)
     except RegistryError:
         return None
-    return _write_photo(data, ext)
+    return _write_photo(clean, ext)
 
 
 def _write_photo(data: bytes, ext: str) -> str:
@@ -199,40 +202,58 @@ def backup_photo(photo_file: str | None) -> None:
         shutil.move(str(source), str(PHOTO_DIR / "backup" / f"{photo_file}.{stamp}.bak"))
 
 
-def inspect_image(data: bytes) -> tuple[str, int, int]:
-    """Return (ext, width, height) from the real bytes; the extension/Content-Type is never trusted."""
+def sanitize_image(data: bytes) -> tuple[str, int, int, bytes]:
+    """Fully decode the upload with Pillow and return (ext, width, height, clean re-encoded bytes).
+
+    The declared extension/Content-Type is never trusted. Corrupt or disguised files, animated images, oversized
+    dimensions (decompression bombs) are rejected before pixels are loaded. Re-encoding drops EXIF/GPS/ICC and any
+    trailing or embedded payload, and applies the EXIF orientation first so the stored photo is upright.
+    """
     if len(data) < 32:
         raise RegistryError(400, "이미지 파일이 올바르지 않습니다.", "photo")
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        if data[12:16] != b"IHDR" or b"IEND" not in data[-16:]:
-            raise RegistryError(400, "PNG 파일이 손상되었거나 올바르지 않습니다.", "photo")
-        width, height = struct.unpack(">II", data[16:24])
+    if len(data) > MAX_PHOTO_BYTES:
+        raise RegistryError(413, "사진 파일은 5MB 이하여야 합니다.", "photo")
+    Image.MAX_IMAGE_PIXELS = MAX_PHOTO_PIXELS
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            image = Image.open(io.BytesIO(data), formats=("JPEG", "PNG"))
+            fmt = image.format
+            width, height = image.size
+            if not (MIN_PHOTO_SIDE <= width <= MAX_PHOTO_SIDE and MIN_PHOTO_SIDE <= height <= MAX_PHOTO_SIDE) \
+                    or width * height > MAX_PHOTO_PIXELS:
+                raise RegistryError(
+                    400, f"이미지 해상도는 한 변이 {MIN_PHOTO_SIDE}~{MAX_PHOTO_SIDE}px 범위여야 합니다.", "photo")
+            if getattr(image, "n_frames", 1) > 1:
+                raise RegistryError(400, "움직이는/다중 프레임 이미지는 등록할 수 없습니다.", "photo")
+            tail = data.rstrip(b"\x00")
+            if (fmt == "PNG" and not tail.endswith(b"IEND\xaeB`\x82")) or (fmt == "JPEG" and not tail.endswith(b"\xff\xd9")):
+                raise RegistryError(400, "이미지 파일이 잘렸거나 손상되었습니다.", "photo")
+            image.load()
+            image = ImageOps.exif_transpose(image)
+            image = image.convert("RGB")
+    except RegistryError:
+        raise
+    except UnidentifiedImageError:
+        raise RegistryError(415, "JPG, JPEG, PNG 형식의 이미지만 등록할 수 있습니다.", "photo") from None
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise RegistryError(400, "이미지 해상도가 너무 큽니다.", "photo") from None
+    except (OSError, ValueError, SyntaxError, MemoryError):
+        raise RegistryError(400, "이미지가 손상되었거나 디코딩할 수 없습니다.", "photo") from None
+    out = io.BytesIO()
+    if fmt == "PNG":
+        image.save(out, format="PNG", optimize=True)
         ext = "png"
-    elif data.startswith(b"\xff\xd8\xff"):
-        if not data.rstrip(b"\x00").endswith(b"\xff\xd9"):
-            raise RegistryError(400, "JPEG 파일이 손상되었거나 올바르지 않습니다.", "photo")
-        width = height = 0
-        pos = 2
-        while pos + 9 < len(data):
-            if data[pos] != 0xFF:
-                pos += 1
-                continue
-            marker = data[pos + 1]
-            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7 or marker == 0xFF:
-                pos += 1 if marker == 0xFF else 2
-                continue
-            length = struct.unpack(">H", data[pos + 2:pos + 4])[0]
-            if marker in range(0xC0, 0xD0) and marker not in (0xC4, 0xC8, 0xCC):
-                height, width = struct.unpack(">HH", data[pos + 5:pos + 9])
-                break
-            pos += 2 + length
-        ext = "jpg"
     else:
-        raise RegistryError(415, "JPG, JPEG, PNG 형식의 이미지만 등록할 수 있습니다.", "photo")
-    if not (MIN_PHOTO_SIDE <= width <= MAX_PHOTO_SIDE and MIN_PHOTO_SIDE <= height <= MAX_PHOTO_SIDE) \
-            or width * height > MAX_PHOTO_PIXELS:
-        raise RegistryError(
-            400, f"이미지 해상도는 한 변이 {MIN_PHOTO_SIDE}~{MAX_PHOTO_SIDE}px 범위여야 합니다.", "photo")
+        image.save(out, format="JPEG", quality=95, subsampling=0, optimize=True)
+        ext = "jpg"
+    width, height = image.size
+    return ext, width, height, out.getvalue()
+
+
+def inspect_image(data: bytes) -> tuple[str, int, int]:
+    """Validation only: (ext, width, height) after a full decode."""
+    ext, width, height, _ = sanitize_image(data)
     return ext, width, height
 
 
@@ -417,8 +438,8 @@ def set_photo(connection: sqlite3.Connection, candidate_id: str, data: bytes) ->
         raise RegistryError(404, "응시자를 찾을 수 없습니다.")
     if len(data) > MAX_PHOTO_BYTES:
         raise RegistryError(413, "사진 파일은 5MB 이하여야 합니다.", "photo")
-    ext, width, height = inspect_image(data)
-    new_file = _write_photo(data, ext)
+    ext, width, height, clean = sanitize_image(data)
+    new_file = _write_photo(clean, ext)
     backup_photo(row["photo_file"])
     connection.execute("UPDATE demo_candidates SET photo_file = ?, updated_at = ? WHERE id = ?",
                        (new_file, _now(), candidate_id))

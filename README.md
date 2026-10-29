@@ -28,7 +28,7 @@ python3 -m pip install -r requirements.txt
 python3 server.py
 ```
 
-브라우저에서 <http://127.0.0.1:8000/>을 엽니다. 서버 시작 로그에 시연 응시자, 감독관, 관리자 키가 각각 표시됩니다. 키오스크 화면은 <http://127.0.0.1:8000/kiosk>에서 실행합니다. 기본값은 데모용 더미 키이며 실제 비밀키를 사용하지 않고, 브라우저의 로그인 버튼 또는 입력 필드에 넣어 세션을 만들 수 있습니다. 환경변수 `EXAM_SAFE_CANDIDATE_KEY`, `EXAM_SAFE_PROCTOR_KEY`, `EXAM_SAFE_ADMIN_KEY`를 설정하면 키를 직접 지정할 수 있습니다. 키와 계정 정보는 공개 저장소에 저장하거나 실제 비밀키를 사용하지 마세요. QR 디코더는 `/vendor/qr-decoder.min.js`에서 로컬로 제공되므로 실행 시 외부 CDN이나 인터넷 연결이 필요하지 않습니다.
+브라우저에서 <http://127.0.0.1:8000/>을 엽니다. 키는 서버 로그에 출력되지 않으며 아래 '로그인 계정과 비밀정보 설정' 절차로 직접 설정해야 서버가 시작됩니다. 키오스크 화면은 <http://127.0.0.1:8000/kiosk>에서 실행합니다. 브라우저의 로그인 버튼 또는 입력 필드에 넣어 세션을 만들 수 있습니다. 환경변수 `EXAM_SAFE_CANDIDATE_KEY`, `EXAM_SAFE_PROCTOR_KEY`, `EXAM_SAFE_ADMIN_KEY`를 설정하면 키를 직접 지정할 수 있습니다. 키와 계정 정보는 공개 저장소에 저장하거나 실제 비밀키를 사용하지 마세요. QR 디코더는 `/vendor/qr-decoder.min.js`에서 로컬로 제공되므로 실행 시 외부 CDN이나 인터넷 연결이 필요하지 않습니다.
 
 ## 문서
 
@@ -48,22 +48,24 @@ pytest -q
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-## 데모 로그인 계정
+## 로그인 계정과 비밀정보 설정 (필수)
 
-시연용 더미 계정은 다음과 같습니다.
+서버에는 기본 계정·비밀번호·API 키가 없습니다. 관리자 비밀정보(`EXAM_SAFE_ADMIN_PASSWORD_HASH`, `EXAM_SAFE_ADMIN_KEY`)가 없거나 과거 기본값·약한 값이면 서버가 시작되지 않습니다(종료 코드 2).
 
-- 응시자: `candidate-demo` / `candidate-demo-123` / 키 `demo-candidate-key`
-- 감독관: `proctor-demo` / `proctor-demo-123` / 키 `demo-proctor-key`
-- 관리자: `admin-demo` / `admin-demo-123` / 키 `demo-admin-key`
-- 현장 책임자: `supervisor-demo` / `supervisor-demo-123` / 키 `demo-supervisor-key`
+1. 본인 터미널에서 `python3 tools/generate_secrets.py` (역할 지정: `--role proctor`, 직접 입력: `--prompt`)를 실행합니다. 출력은 한 번만 표시되므로 저장·공유하지 마세요.
+2. 출력된 `EXAM_SAFE_<ROLE>_PASSWORD_HASH`, `EXAM_SAFE_<ROLE>_KEY` 값을 GitHub > Settings > Codespaces > Secrets(저장소 접근 허용)에 등록하고 Codespace를 재시작합니다. 로컬에서는 추적되지 않는 `.env`에 둘 수 있습니다(`.env`는 `.gitignore` 대상).
+3. 변수 이름 목록은 `.env.example`을 참고하세요(값 없음). 감독관·응시자·현장 책임자 역할은 값을 설정한 경우에만 활성화됩니다. 계정 ID는 `EXAM_SAFE_<ROLE>_USERNAME`(기본 `<role>-demo`)입니다.
+4. 비밀번호는 scrypt 해시로만 저장·비교하며 평문은 서버 설정에 두지 않습니다. 이전 버전의 기본 계정/키는 Git 기록에 남아 있으므로 **사용하지 말고 새 값으로 교체**하세요.
 
-브라우저에서 각 역할 화면의 로그인 버튼을 누르거나 다음처럼 직접 로그인할 수 있습니다.
+브라우저에서 각 역할 화면에 설정한 키/계정을 입력하거나 다음처럼 로그인할 수 있습니다(값은 본인 Secrets 값).
 
 ```sh
 curl -X POST http://127.0.0.1:8000/api/login \
   -H 'Content-Type: application/json' \
-  -d '{"role":"proctor","demo_key":"demo-proctor-key","username":"proctor-demo","password":"proctor-demo-123"}'
+  -d '{"role":"proctor","demo_key":"<PROCTOR_KEY>","username":"<PROCTOR_USERNAME>","password":"<PASSWORD>"}'
 ```
+
+로그인 실패는 클라이언트 주소·역할별로 속도 제한(기본 5회/300초)됩니다. 상태 변경 요청은 `Origin` 허용 목록(`EXAM_SAFE_ALLOWED_ORIGINS`, Codespaces 포워딩 주소는 환경에서 자동 유도)과 쿠키 세션의 CSRF 토큰(`X-CSRF-Token`)을 모두 검사합니다. 세션은 SQLite(`session_store`)에 저장되어 재시작 후에도 만료 시각이 유지됩니다(세션 ID는 해시만 저장).
 
 로그인하면 서버가 `demo_session_id` 쿠키를 발급하고 다음 API 호출에서 역할 기반 권한을 확인합니다. 현장 책임자 키는 `EXAM_SAFE_SUPERVISOR_KEY`로 지정할 수 있습니다. 기존 호환성을 위해 `X-Demo-Role`과 `X-Demo-Key` 헤더도 계속 지원합니다.
 
@@ -122,7 +124,7 @@ npm run build:face
 실제 키오스크 장비 없이 같은 PC에서 두 브라우저 창/탭으로 진행할 수 있습니다.
 
 1. 저장소 루트에서 `python3 server.py`를 실행합니다. 브라우저 A에서 <http://127.0.0.1:8000/kiosk>를 열고 F11을 눌러 전체화면으로 전환합니다. Chrome/Edge 키오스크 실행 옵션을 사용하는 경우 예: `google-chrome --kiosk http://127.0.0.1:8000/kiosk` (설치된 브라우저 실행 파일 이름은 환경에 따라 다릅니다).
-2. 브라우저 B에서 <http://127.0.0.1:8000/>을 열고 **감독관** 탭에서 감독관 키로 로그인합니다. 기본 로컬 시연 키는 `demo-proctor-key`이며, 서버 시작 로그에 표시된 키 또는 `EXAM_SAFE_PROCTOR_KEY` 값을 사용합니다.
+2. 브라우저 B에서 <http://127.0.0.1:8000/>을 열고 **감독관** 탭에서 감독관 키로 로그인합니다. `EXAM_SAFE_PROCTOR_KEY`로 설정한 값을 사용합니다.
 3. 브라우저 A에서 **감독관 인증**을 누르고 가상 수험번호 `2026-0012`를 입력합니다. 이 조회만으로는 인증되지 않습니다. 브라우저 B의 감독관 탭에서 **키오스크 확인 요청 새로고침**을 눌러 요청을 확인합니다.
 4. 응시자와 대면한 시연 상황에서 감독관은 실제 자동판독 없이 허용된 모의 문서 종류(예: 주민등록증)를 선택하고 **신분증·현장 얼굴 일치**를 판정해 제출합니다. 승인되지 않은 역할의 요청은 서버가 거부하고 토큰을 만들지 않습니다. 승인되면 브라우저 A에 개인정보 없는 일회용 QR이 표시됩니다. 발급 순간부터 서버 기준 30초이며 만료 시 화면에서 사라집니다.
 5. 입실구 재확인은 브라우저 B의 기존 감독관 QR 스캐너 기능에서 수행합니다. 카메라가 없으면 QR이 표시된 브라우저 A 화면을 PNG 스크린샷으로 저장해 감독관 화면의 **QR 이미지 파일로 확인**에 올립니다. 스크린샷 저장이 어렵다면 키오스크 QR 화면을 OS 캡처 도구로 잘라 PNG로 저장하면 됩니다. 업로드 이미지는 로컬 브라우저에서 판독하고 토큰은 서버의 `/api/token/inspect`로 검증합니다. 카메라 대신 직접 API를 점검하려면 아래 자동 통합 시나리오가 PNG를 ZXing으로 판독한 토큰을 실제 검사·승인 API에 제출합니다.

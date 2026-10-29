@@ -59,6 +59,30 @@ process.stdin.on('end', () => {
 PROCTOR_KEY = "local-test-proctor-key"
 ADMIN_KEY = "local-test-admin-key"
 SUPERVISOR_KEY = "local-test-supervisor-key"
+CANDIDATE_KEY = "local-test-candidate-key"
+# Throwaway test-only credentials; the server only ever receives scrypt hashes of the passwords.
+TEST_PASSWORDS = {
+    "candidate": "Cand!date-test-pw-01",
+    "proctor": "Proct0r-test-pw-02",
+    "admin": "Adm1n-test-pw-03",
+    "supervisor": "Superv1sor-test-pw-04",
+}
+ADMIN_PASSWORD = TEST_PASSWORDS["admin"]
+PROCTOR_PASSWORD = TEST_PASSWORDS["proctor"]
+
+
+def auth_env() -> dict[str, str]:
+    import auth_config
+
+    env = {
+        "EXAM_SAFE_CANDIDATE_KEY": CANDIDATE_KEY,
+        "EXAM_SAFE_PROCTOR_KEY": PROCTOR_KEY,
+        "EXAM_SAFE_ADMIN_KEY": ADMIN_KEY,
+        "EXAM_SAFE_SUPERVISOR_KEY": SUPERVISOR_KEY,
+    }
+    for role, password in TEST_PASSWORDS.items():
+        env[f"EXAM_SAFE_{role.upper()}_PASSWORD_HASH"] = auth_config.hash_password(password)
+    return env
 EXAM_ID = "exam-demo-2026"
 CAN_1 = "candidate-001"
 CAN_2 = "candidate-002"
@@ -349,12 +373,10 @@ class ServerScenarios(unittest.TestCase):
                 "EXAM_SAFE_LEGACY_IMAGE_DIR": str(Path(cls.temp_dir.name) / "no_legacy_images"),
                 "EXAM_SAFE_HOST": "127.0.0.1",
                 "EXAM_SAFE_PORT": str(cls.port),
-                "EXAM_SAFE_PROCTOR_KEY": PROCTOR_KEY,
-                "EXAM_SAFE_ADMIN_KEY": ADMIN_KEY,
-                "EXAM_SAFE_SUPERVISOR_KEY": SUPERVISOR_KEY,
                 "EXAM_SAFE_KIOSK_PRINT_QR_TTL_SECONDS": "900",
             }
         )
+        env.update(auth_env())
         env.update(getattr(cls, "extra_env", {}))
         cls.process = subprocess.Popen(
             [sys.executable, str(ROOT / "server.py")],
