@@ -40,6 +40,13 @@ class VerificationPolicyTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             vp.resolve_state("operational", liveness_score=0.99)
 
+    def test_browser_uncertainty_is_not_rejected_identity(self):
+        state = vp.resolve_state("demo", server_outcome="uncertain")
+        self.assertEqual(state["state"], "inconclusive")
+        self.assertTrue(state["supervisor_required"])
+        self.assertFalse(state["real_authentication"])
+        self.assertEqual(vp.resolve_state("demo", server_outcome="mismatch")["state"], "rejected")
+
     def test_session_without_trusted_provider_is_never_operationally_verified(self):
         for state in ("qr_ready", "completed", "anything"):
             self.assertNotEqual(

@@ -36,8 +36,33 @@ class KioskUiGuardTests(unittest.TestCase):
 
     def test_face_result_is_labelled_inconclusive_and_never_auto_issues_qr(self):
         self.assertIn("browserVerificationState", self.page)
-        self.assertIn("감독관 확인이 필요합니다", self.page)
+        self.assertIn("감독관 확인을 요청해 주세요", self.page)
         self.assertIn("$('completeSelfDemo').hidden=true", self.page)
+
+    def test_inconclusive_face_and_pad_results_are_not_presented_as_identity_rejection(self):
+        self.assertIn('id="verificationStateResult"', self.page)
+        self.assertIn("검증된 동일인 판정 기준 없음", self.page)
+        self.assertIn("얼굴 분석만으로 본인 여부를 확인할 수 없습니다", self.page)
+        self.assertIn("브라우저 결과로 승인(verified) 또는 거부(rejected)하지 않습니다", self.page)
+        self.assertIn("위조로 확정되지 않음", self.page)
+        self.assertIn("실재로 확인되지 않음", self.page)
+        self.assertIn("이는 타인이라는 판정이 아닙니다", self.page)
+        self.assertNotIn("본인이 아닙니다", self.page)
+        self.assertNotIn("불일치입니다", self.page)
+
+    def test_supervisor_review_is_prominent_and_auto_simulation_is_separate(self):
+        self.assertIn('id="supervisorPanel"', self.page)
+        self.assertIn('id="faceHelp"', self.page)
+        self.assertIn("/api/kiosk/self-demo/request-review", self.page)
+        self.assertIn('id="simPanel"', self.page)
+        self.assertIn("얼굴 분석과 <u>무관한</u> 사전 설정 시연", self.page)
+
+    def test_inline_proctor_approval_and_visible_simulation_errors(self):
+        for needle in ('id="inlineProctorForm"', 'id="simStatus"', "/api/kiosk/physical-review", "/api/login"):
+            self.assertIn(needle, self.page)
+        # face/PAD scores are never sent with the review or auto-issue requests
+        review = self.page[self.page.index("$('inlineProctorForm').onsubmit"):self.page.index("async function runAutoIssue")]
+        self.assertNotRegex(review, r"(?:face_score|face_similarity|capturedFaceResult|liveness|similarity|antispoof)")
 
     def test_analysis_has_timeout_so_loading_cannot_hang(self):
         self.assertIn("ANALYSIS_TIMEOUT_MS", self.page)

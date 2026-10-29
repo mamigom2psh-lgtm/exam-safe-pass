@@ -140,7 +140,8 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <p class="step-count">3단계</p>
 <h2 id="resultTitle" tabindex="-1">참고용 얼굴 유사도 분석 결과 (DEMO) · 얼굴 비교 결과</h2>
 <div class="status" id="faceComparisonResult" aria-live="polite" aria-atomic="true"></div>
-<div class="status warn" id="livenessResult" aria-live="polite" aria-atomic="true">실재성 모델 검사 대기 중 · 결과 화면은 DEMO와 분리됩니다.</div>
+<div class="status warn" id="livenessResult" aria-live="polite" aria-atomic="true">PAD 참고 검사 대기 중 · 실재성 인증으로 사용되지 않습니다.</div>
+<div class="status warn" id="verificationStateResult" aria-live="polite" aria-atomic="true">인증 상태: 확인 전</div>
 <details class="small" id="antiSpoofDiagnostics">
 <summary>개발자 진단 · DEMO 전용</summary>
 <p>모델 자산과 추론 상태만 표시합니다. 얼굴 이미지, 특징값, 응시자 정보는 표시하거나 저장하지 않습니다.</p>
@@ -194,6 +195,7 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <label for="simPass">비밀번호</label><input id="simPass" type="password" autocomplete="current-password">
 <button class="secondary" type="submit">감독관 로그인 후 발급</button>
 </form>
+<div class="status" id="simStatus" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
 </div>
 <div class="status" id="selfResultStatus" aria-live="polite" aria-atomic="true"></div>
 </section>
@@ -214,6 +216,18 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <p class="lead">화면을 유지하고 감독관에게 확인을 요청하세요. 서버에서 권한이 확인된 감독관만 신원확인을 완료할 수 있습니다.</p>
 <div class="person" id="candidateInfo"></div>
 <div class="status warn" id="proctorStatus" aria-live="polite" aria-atomic="true">수험번호 조회만으로 인증되지 않습니다.</div>
+<details class="sim-box" id="inlineProctor" open>
+<summary><strong>감독관 전용 · 이 키오스크에서 DEMO 승인</strong></summary>
+<p class="small">감독관이 신분증과 현장 얼굴을 직접 대조한 뒤 서버 로그인(권한 검증)으로 승인합니다. 얼굴 분석 점수는 승인에 사용되지 않으며 DEMO QR은 실제 입실에 사용할 수 없습니다. 별도 감독관 화면(관리자 페이지)에서도 승인할 수 있습니다.</p>
+<form id="inlineProctorForm" class="row">
+<label for="ipUser">감독관(DEMO) 계정</label><input id="ipUser" autocomplete="username" value="proctor-demo">
+<label for="ipPass">비밀번호</label><input id="ipPass" type="password" autocomplete="current-password">
+<label for="ipDoc">신분증 종류</label><select id="ipDoc"><option value="resident_card">주민등록증</option><option value="driver_license">운전면허증</option><option value="passport">여권</option></select>
+<label for="ipResult">감독관 확인 결과</label><select id="ipResult"><option value="normal">신분증·현장 얼굴 일치 → DEMO QR 발급</option><option value="document_mismatch">신분증 불일치 (거부)</option><option value="suspected_proxy">대리응시 의심 (거부)</option><option value="identity_unverifiable">신원확인 불가 (보류)</option></select>
+<button type="submit">감독관 판정 제출</button>
+</form>
+<div class="status" id="inlineProctorStatus" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
+</details>
 </section>
 
 <section class="screen" id="qrScreen" aria-labelledby="qrTitle">
@@ -474,12 +488,25 @@ function showLivenessResult(result){
 		face_missing:'얼굴 미검출',
 		multiple_faces:`여러 얼굴 검출 (${result.count}명)`,
 		liveness_unavailable:'모델 점수가 없거나 로딩되지 않아 판정 불가',
-		spoof_suspected:'위조 의심 점수',
-		live_candidate:'실재 후보 점수',
+		spoof_suspected:'참고 점수가 PoC 기준 미만',
+		live_candidate:'참고 점수가 PoC 기준 이상',
 	};
 	const score=Number.isFinite(result.score)?` · 실제 모델 점수 ${result.score.toFixed(2)} / 임계값 ${result.threshold.toFixed(2)}`:'';
-	const status=result.status==='live_candidate'?'warn':'bad';
-	setStatus('livenessResult',`Human Antispoof 3.3.6 PoC · ${details[result.status]||'검사 실패'}${score} · 인증 결과 아님`,status);
+	setStatus('livenessResult',`Human Antispoof PoC 참고 결과 · 3.3.6 모델은 인쇄·화면·영상 공격에 대해 검증되지 않았습니다. ${details[result.status]||'점수 확인 불가'}${score} · 실재/위조 판정이나 인증 결과가 아닙니다.`,'warn');
+}
+function showVerificationState(comparison,liveness){
+	const browserState=window.ExamFaceSimilarity.browserVerificationState(comparison,liveness);
+	const faceNote=comparison?.status==='reference_only'
+		?'얼굴 비교: 참고 유사도만 계산됨 (검증된 동일인 판정 기준 없음)'
+		:'얼굴 비교: 분석 불가 또는 얼굴 입력 조건 미충족 (타인 판정 아님)';
+	const padNote=liveness?.status==='spoof_suspected'
+		?'PAD: 참고 점수가 기준 미만이나 위조로 확정되지 않음'
+		:liveness?.status==='live_candidate'
+			?'PAD: 참고 점수가 기준 이상이나 실재로 확인되지 않음'
+			:'PAD: 분석 불가 또는 검증되지 않음';
+	setStatus('verificationStateResult',
+		`인증 상태: ${browserState.state} · ${faceNote} · ${padNote} · 얼굴 분석만으로 본인 여부를 확인할 수 없습니다. 브라우저 결과로 승인(verified) 또는 거부(rejected)하지 않습니다. 감독관 확인을 요청해 주세요.`,
+		'warn');
 }
 // Progress indicator only; it never reflects a verified identity (every step is a DEMO step).
 const FLOW_STEPS=[['numberScreen','수험번호 조회'],['selfCameraScreen','카메라 촬영'],['selfResultScreen','참고용 분석'],['proctorWaitScreen','감독관 확인'],['qrScreen','DEMO QR'],['demoEntryScreen','입실 시연']];
@@ -713,6 +740,11 @@ async function closeSession(){
 	capturedLivenessResult=null;
 	$('candidateNumber').value='';
 	$('candidateInfo').textContent='';
+	$('simStatus').hidden=true;
+	$('simLoginForm').hidden=true;
+	$('inlineProctorStatus').hidden=true;
+	$('ipPass').value='';
+	$('simPass').value='';
 	$('registeredFacePhoto').removeAttribute('src');
 	$('registeredFacePhoto').hidden=true;
 	$('entryQr').removeAttribute('src');
@@ -731,7 +763,8 @@ async function closeSession(){
 	$('cameraContinue').hidden=true;
 	$('startCamera').hidden=false;
 	setStatus('faceComparisonResult','');
-	setStatus('livenessResult','실재성 모델 검사 대기 중 · 결과 화면은 DEMO와 분리됩니다.','warn');
+	setStatus('livenessResult','PAD 참고 검사 대기 중 · 실재성 인증으로 사용되지 않습니다.','warn');
+	setStatus('verificationStateResult','인증 상태: 분석 전','warn');
 	setStatus('ticketChoiceStatus','');
 	setStatus('homeStatus',cleanupFailed?genericError():'',cleanupFailed?'bad':'');
 	setStatus('lookupStatus','');
@@ -950,7 +983,8 @@ $('cameraContinue').onclick=async()=>{
 	$('completeSelfDemo').hidden=true;
 	$('selfCameraScreen').setAttribute('aria-busy','true');
 	setStatus('cameraStatus','Human FaceRes 및 Antispoof 모델을 실제 실행 중입니다. 완료될 때까지 다음 단계로 이동할 수 없습니다.','warn');
-	setStatus('livenessResult','Human Antispoof PoC 실행 중 · 검사 결과는 DEMO 모의 인증과 분리됩니다.','warn');
+	setStatus('livenessResult','PAD 참고 검사 중 · 실재성 인증으로 사용되지 않습니다.','warn');
+	setStatus('verificationStateResult','인증 상태: 분석 중','warn');
 	const results=[];
 	const frame=document.createElement('canvas');
 	try{
@@ -1105,11 +1139,10 @@ $('cameraContinue').onclick=async()=>{
 		capturedFaceResult=comparison.status;
 		capturedLivenessResult=liveness.status;
 		showLivenessResult(liveness);
-		const browserState=ExamFaceSimilarity.browserVerificationState(comparison,liveness);
-		const stateNote=`인증 상태: ${browserState.state}(판정 불가) · 이 브라우저 결과는 verified가 될 수 없으며 감독관 확인이 필요합니다. PAD(위조 탐지) 성능은 미검증입니다.`;
+		showVerificationState(comparison,liveness);
 		if(comparison.status==='reference_only'){
-			updateAntiSpoofDiagnostics({reason:'검증된 판정 기준(임계값·표본)이 없어 판정 불가 · 감독관 확인 필요'});
-			setStatus('faceComparisonResult',`참고용 유사도 수치 · ${(comparison.score*100).toFixed(1)}% (동일인일 확률이 아니며 헤어스타일·조명·촬영 시점에 따라 달라질 수 있습니다) · 본인 여부 미확인. 검증된 판정 기준이 없어 얼굴 점수만으로 인증하거나 QR을 발급하지 않습니다. 감독관 확인을 요청하세요. ${stateNote}`,'warn');
+			updateAntiSpoofDiagnostics({reason:'검증된 동일인 판정 기준(임계값·표본)이 없어 판정 불가 · 감독관 확인 필요'});
+			setStatus('faceComparisonResult',`얼굴 비교 참고값 · ${(comparison.score*100).toFixed(1)}% (동일인일 확률이 아닙니다). 검증된 기준이 없어 본인/타인을 판정하지 않았습니다. 헤어스타일·조명·촬영 시점에 따라 수치가 달라질 수 있습니다.`,'warn');
 			$('completeSelfDemo').hidden=true;
 		}else{
 			const details={
@@ -1121,7 +1154,7 @@ $('cameraContinue').onclick=async()=>{
 				comparison_failed:'얼굴 비교를 완료하지 못했습니다.',
 			};
 			updateAntiSpoofDiagnostics({reason:details[comparison.status]||'얼굴 비교 기능을 사용할 수 없습니다.'});
-			setStatus('faceComparisonResult',`판정 불가 · ${details[comparison.status]||'얼굴 비교 기능을 사용할 수 없습니다.'} 다시 촬영하거나 감독관 확인을 요청하세요.`,'bad');
+			setStatus('faceComparisonResult',`얼굴 비교 분석 불가 · ${details[comparison.status]||'얼굴 비교 기능을 사용할 수 없습니다.'} 이는 타인이라는 판정이 아닙니다. 다시 촬영하거나 감독관 확인을 요청하세요.`,'warn');
 			$('completeSelfDemo').hidden=true;
 		}
 	}catch(error){
@@ -1143,8 +1176,9 @@ $('cameraContinue').onclick=async()=>{
 			verdict:`판정 불가 · ${reason}`,
 		});
 		updateAntiSpoofDiagnostics({reason:`분석 오류 · ${reason}`});
-		setStatus('faceComparisonResult','판정 불가 · 얼굴 비교 기능을 사용할 수 없습니다. QR은 발급되지 않았습니다. 다시 촬영하거나 감독관 확인을 요청하세요.','bad');
+		setStatus('faceComparisonResult','얼굴 비교 분석에 실패했습니다. 이는 타인이라는 판정이 아닙니다. 다시 촬영하거나 감독관 확인을 요청하세요.','warn');
 		showLivenessResult({status:'liveness_unavailable'});
+		showVerificationState({status:'comparison_failed'},{status:'liveness_unavailable'});
 		$('completeSelfDemo').hidden=true;
 	}finally{
 		clearFaceResults(results);
@@ -1153,7 +1187,9 @@ $('cameraContinue').onclick=async()=>{
 		stopCameraPreview();
 		if(requestId===analysisRequestId)analysisRequestId++;
 		$('cameraContinue').disabled=false;
+		$('simStatus').hidden=true;
 		showScreen('selfResultScreen');
+		$('supervisorPanel').scrollIntoView({block:'center'});
 		$('selfCameraScreen').removeAttribute('aria-busy');
 	}
 };
@@ -1201,7 +1237,10 @@ $('retryFaceCapture').onclick=()=>{
 	$('recordDist').disabled=true;
 	capturedFaceResult=null;
 	capturedLivenessResult=null;
-	setStatus('livenessResult','실재성 모델 검사 대기 중 · 결과 화면은 DEMO와 분리됩니다.','warn');
+	setStatus('livenessResult','PAD 참고 검사 대기 중 · 실재성 인증으로 사용되지 않습니다.','warn');
+	setStatus('verificationStateResult','인증 상태: 분석 전','warn');
+	$('simStatus').hidden=true;
+	$('simLoginForm').hidden=true;
 	$('completeSelfDemo').hidden=true;
 	setStatus('cameraStatus','계속하려면 카메라를 켜 주세요.');
 	showScreen('selfCameraScreen');
@@ -1216,9 +1255,49 @@ $('faceHelp').onclick=async()=>{
 		statusTimer=setInterval(pollStatus,1000);
 		showScreen('proctorWaitScreen');
 	}catch(error){
-		setStatus('selfResultStatus',`${error.message||genericError()} 인증은 완료되지 않았습니다. 다시 시도하거나 현장 직원에게 문의하세요.`,'bad');
+		setStatus('selfResultStatus',`${error.message||genericError()} 인증은 완료되지 않았습니다. 세션이 만료된 경우 처음 화면에서 다시 시작해 주세요.`,'bad');
+		$('selfResultStatus').scrollIntoView({block:'center'});
 	}finally{
 		$('faceHelp').disabled=false;
+	}
+};
+function showSimStatus(text,kind){
+	const box=$('simStatus');
+	box.hidden=false;
+	box.className=`status ${kind||''}`;
+	box.textContent=text;
+	setStatus('selfResultStatus',text,kind);
+	box.scrollIntoView({block:'center'});
+}
+$('inlineProctorForm').onsubmit=async event=>{
+	event.preventDefault();
+	const out=$('inlineProctorStatus');
+	const show=(text,kind)=>{out.hidden=false;out.className=`status ${kind}`;out.textContent=text};
+	const reason=$('ipResult').value, hold=reason==='identity_unverifiable';
+	try{
+		await api('/api/login',{role:'proctor',username:$('ipUser').value,password:$('ipPass').value});
+		$('ipPass').value='';
+	}catch(error){
+		show('감독관 로그인에 실패했습니다. 승인되지 않았습니다.','bad');
+		return;
+	}
+	try{
+		const result=await api('/api/kiosk/physical-review',{
+			kiosk_session_id:kioskSessionId,
+			document_type:$('ipDoc').value,
+			decision:hold?'hold':reason==='normal'?'approve':'reject',
+			reason,
+			document_match:reason==='normal'||reason==='suspected_proxy',
+			live_face_match:reason==='normal',
+		});
+		if(result.state==='demo_qr_ready'){
+			show('감독관 승인 완료 · DEMO QR을 불러옵니다.','good');
+			await pollStatus();
+		}else{
+			show(`${result.message||'감독관 판정이 기록되었습니다.'} QR은 발급되지 않았습니다.`,'warn');
+		}
+	}catch(error){
+		show(`${error.message||genericError()} QR은 발급되지 않았습니다.`,'bad');
 	}
 };
 async function runAutoIssue(){
@@ -1234,10 +1313,10 @@ async function runAutoIssue(){
 	}catch(error){
 		if(/권한/.test(error.message)){
 			$('simLoginForm').hidden=false;
-			setStatus('selfResultStatus','자동 발급 시연에는 서버가 확인하는 감독관(DEMO) 로그인이 필요합니다. 계정 정보를 입력해 주세요.','warn');
+			showSimStatus('자동 발급 시연에는 서버가 확인하는 감독관(DEMO) 로그인이 필요합니다. 위 계정 정보를 입력한 뒤 로그인하면 DEMO QR이 발급됩니다.','warn');
 			$('simPass').focus();
 		}else{
-			setStatus('selfResultStatus',`${error.message||genericError()} QR은 발급되지 않았습니다.`,'bad');
+			showSimStatus(`${error.message||genericError()} QR은 발급되지 않았습니다.`,'bad');
 		}
 	}finally{
 		$('autoIssueDemo').disabled=false;
@@ -1251,7 +1330,7 @@ $('simLoginForm').onsubmit=async event=>{
 		$('simPass').value='';
 		await runAutoIssue();
 	}catch(error){
-		setStatus('selfResultStatus','감독관 로그인에 실패했습니다. QR은 발급되지 않았습니다.','bad');
+		showSimStatus('감독관 로그인에 실패했습니다. QR은 발급되지 않았습니다.','bad');
 	}
 };
 $('showQrChoice').onclick=()=>issueDemoTicket('screen');

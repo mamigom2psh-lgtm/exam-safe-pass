@@ -48,6 +48,7 @@ class KioskDemoIssueTests(unittest.TestCase):
         self.assertFalse(shown["simulation"])
         self.assertLessEqual(shown["expires_in"], 30)
         self.assertFalse(shown["verification"]["real_authentication"])
+        self.assertEqual(ts.decode_qr_png(shown["qr_png"]), shown["demo_token"])
         status, admitted = self.api.kiosk_demo_entry(sid, shown["demo_token"])
         self.assertEqual(status, 200, admitted)
         self.assertEqual(self.api.kiosk_demo_entry(sid, shown["demo_token"])[0], 409)

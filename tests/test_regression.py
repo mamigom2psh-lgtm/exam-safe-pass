@@ -167,7 +167,7 @@ class ExistingPrototypeRegressionTests(unittest.TestCase):
                 self.assertIn(f'id="{control}"', kiosk)
         for control in ("selfDemoSuccess", "selfDemoFailure", "selfDemoUncertain", "selfDemoMismatch", "previewDemoQr"):
             self.assertNotIn(f'id="{control}"', kiosk)
-        for text in ("참고용 유사도 수치", "본인 여부 미확인", "판정 불가", "서버는 실제 본인 여부나 실재성을 검증하지 않습니다.", "실제 입실 기록은 생성되지 않았습니다."):
+        for text in ("얼굴 비교 참고값", "본인/타인을 판정하지 않았습니다", "인증 상태: ${browserState.state}", "서버는 실제 본인 여부나 실재성을 검증하지 않습니다.", "실제 입실 기록은 생성되지 않았습니다."):
             self.assertIn(text, kiosk)
         self.assertIn("navigator.mediaDevices.getUserMedia", kiosk)
         self.assertIn("getTracks().forEach(track=>track.stop())", kiosk)
@@ -194,7 +194,7 @@ class ExistingPrototypeRegressionTests(unittest.TestCase):
         analysis = kiosk[kiosk.index("$('cameraContinue').onclick"):kiosk.index("$('completeSelfDemo').onclick")]
         self.assertLess(analysis.index("model.detect(reference)"), analysis.index("showScreen('selfResultScreen')"))
         self.assertIn("showScreen('selfResultScreen')", analysis[analysis.index("finally"):])
-        self.assertIn("판정 불가 · 얼굴 비교 기능을 사용할 수 없습니다.", analysis)
+        self.assertIn("얼굴 비교 분석에 실패했습니다. 이는 타인이라는 판정이 아닙니다.", analysis)
         self.assertIn("cameraContinue').disabled=false", analysis)
         demo_request = kiosk[kiosk.index("$('completeSelfDemo').onclick"):kiosk.index("$('retryFaceCapture').onclick")]
         self.assertIn("demo_outcome:'success'", demo_request)

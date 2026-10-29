@@ -70,7 +70,7 @@ class HairRobustnessExperimentTests(unittest.TestCase):
         self.assertIn("판정 불가 사유", self.kiosk)
 
     def test_similarity_percent_is_labelled_not_a_probability(self):
-        self.assertIn("동일인일 확률이 아니며", self.kiosk)
+        self.assertIn("동일인일 확률이 아닙니다", self.kiosk)
         self.assertIn("확률 아님", self.kiosk)
 
     def test_crop_and_alignment_experiments_never_feed_verdict_or_server(self):
