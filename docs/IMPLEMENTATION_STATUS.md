@@ -84,3 +84,10 @@ QR 디코드 간헐 실패: 원인은 서버 QR 생성이 아니라 zxing-js의 
 - 수정(kiosk.html): 감독관 대기 화면의 "이 키오스크에서 DEMO 승인" 패널(서버 `/api/login` + `/api/kiosk/physical-review`), 눈에 띄는 `#simStatus` 안내/오류, 세션 만료 안내. 얼굴·PAD 점수는 전송하지 않으며 상태는 계속 inconclusive입니다.
 - 테스트: `tests/test_kiosk_browser_flow.py`(headless Chromium, 카메라는 결과 화면 이동으로 대체; Playwright 없으면 skip), `tests/test_kiosk_ui.py`.
 - 미검증(수동): 실제 카메라 촬영, 실제 프린터(A4/80mm), 휴대전화 사진 PAD 성능.
+
+## 50% 화면 전환 → 가상 DEMO 정보 → 시뮬레이션 QR
+
+- 키오스크: 참고 유사도 ≥ 50.0%(`demoScreenGate`)이면 "추가 정보 입력" 버튼 표시. 점수 누락·NaN·얼굴 검출 실패는 닫힘. **화면 전환 기준일 뿐 본인 인증 기준이 아니며** 점수는 서버로 전송되지 않고 상태는 계속 inconclusive입니다.
+- 서버: `/api/kiosk/self-demo/verify-demo-info`가 가상 코드(YYMMDD-N, 날짜 유효성)와 DEMO 시험 목록을 사전 설정값과 대조합니다(시도 5회 제한, 입력값 미저장·미기록). 일치 후에만 `demo-auto-issue`의 `demo_info_simulation` 시나리오가 서버 DEMO 시뮬레이션 권한(`EXAM_SAFE_DEMO_SIMULATION`, 기본 허용, `0`이면 차단)으로 30초·1회용 DEMO QR을 발급합니다. 브라우저 점수 필드는 400으로 거부됩니다.
+- 감독관 승인 경로와 `preset_auto_issue`(감독관 로그인 필요)는 그대로입니다. 운영 QR·운영 입실은 계속 차단됩니다.
+- 미검증: 실제 카메라 촬영 점수로 50% 전후 전환, 실제 프린터 출력.

@@ -53,11 +53,24 @@ KIOSK_BROWSER_ASSERTION_FIELDS = frozenset({
 })
 EXAM_ID = "exam-demo-2026"
 ROSTER = {
-    ("exam-demo-2026", "candidate-001"): {"name": "김안심", "number": "2026-0012"},
+    ("exam-demo-2026", "candidate-001"): {"name": "박세현", "number": "2026-0012"},
     ("exam-demo-2026", "candidate-002"): {"name": "이모의", "number": "2026-0099"},
 }
+# Preset VIRTUAL DEMO data. These are not real personal data; the code is a fictional birth-date/gender
+# code used only by the contest simulation and is never accepted as a real resident number.
+DEMO_EXAMS = {
+    "demo-computer-2": "컴퓨터활용능력 2급",
+    "demo-mock-2026": "2026 모의 자격시험",
+}
+DEMO_CANDIDATE_PROFILES = {
+    ("exam-demo-2026", "candidate-001"): {"virtual_code": "980320-2", "exam_id": "demo-computer-2"},
+}
+DEMO_INFO_MAX_ATTEMPTS = 5
+# Server-side permission for the preset DEMO simulation. It never enables operational issuance.
+DEMO_SIMULATION_ENABLED = os.environ.get("EXAM_SAFE_DEMO_SIMULATION", "1") != "0"
+VIRTUAL_CODE_PATTERN = re.compile(r"^(\d{2})(\d{2})(\d{2})-([1-4])$")
 IMAGE_FILES = {
-    "candidate.jpg",
+    "2026-0012-registration.jpg",
     "candidate2.png",
     "impostor.png",
 }
@@ -738,6 +751,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/kiosk/demo-auto-issue":
             self._kiosk_demo_auto_issue()
             return
+        if path == "/api/kiosk/self-demo/verify-demo-info":
+            self._kiosk_verify_demo_info()
+            return
         if path == "/api/kiosk/self-demo/refresh-qr":
             self._refresh_kiosk_self_demo_qr()
             return
@@ -882,6 +898,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_json(409, {"error": "이미 입실 처리된 응시자입니다. 현장 직원에게 문의하세요."})
                 return
             session["candidate_id"] = candidate_id
+            session["demo_info_verified"] = False
             session["exam_id"] = exam_id
             session["mode"] = mode
             session["state"] = "awaiting_self_auth" if mode == "self_demo" else "awaiting_proctor"
@@ -902,8 +919,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "candidate_id": candidate_id,
                 "candidate_name": candidate_info["name"],
                 "candidate_number": candidate_info["number"],
+                "demo_exam_options": [{"id": key, "name": name} for key, name in DEMO_EXAMS.items()],
                 "registered_photo_url": (
-                    "/images/candidate.jpg"
+                    "/images/2026-0012-registration.jpg"
                     if candidate_id == "candidate-001"
                     else "/images/candidate2.png"
                 ),
@@ -1582,7 +1600,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         "candidate_name": candidate["name"],
                         "candidate_number": candidate["number"],
                         "authentication_mode": session.get("mode") or "proctor",
-                        "photo_url": "/images/candidate.jpg" if candidate_id == "candidate-001" else "/images/candidate2.png",
+                        "photo_url": "/images/2026-0012-registration.jpg" if candidate_id == "candidate-001" else "/images/candidate2.png",
                         "expires_in": max(
                             0,
                             int(KIOSK_SESSION_TTL_SECONDS - (now - session["last_activity"])),
@@ -1642,6 +1660,99 @@ class RequestHandler(BaseHTTPRequestHandler):
             },
         )
 
+    @staticmethod
+    def _valid_virtual_code(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        match = VIRTUAL_CODE_PATTERN.match(value)
+        if not match:
+            return False
+        yy, mm, dd = (int(part) for part in match.groups()[:3])
+        for century in (1900, 2000):
+            try:
+                datetime(century + yy, mm, dd)
+                return True
+            except ValueError:
+                continue
+        return False
+
+    def _kiosk_verify_demo_info(self) -> None:
+        """Compare virtual DEMO info with server presets. Never trusts or stores browser scores or raw input."""
+        try:
+            payload = self._read_json()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        if KIOSK_BROWSER_ASSERTION_FIELDS.intersection(payload):
+            self._send_json(400, {"error": "브라우저 얼굴 분석 결과는 서버에서 사용하지 않습니다.", "demo_only": True, "real_authentication": False})
+            return
+        self._purge_expired_kiosk_sessions()
+        session = self._kiosk_session(payload.get("kiosk_session_id"))
+        if not session:
+            self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
+            return
+        code, exam_ref = payload.get("virtual_code"), payload.get("exam")
+        if not isinstance(code, str) or not code.strip():
+            self._send_json(400, {"error": "가상 DEMO 생년월일·구분 코드를 입력해 주세요. 예: 980320-2", "field": "virtual_code"})
+            return
+        if not self._valid_virtual_code(code.strip()):
+            self._send_json(400, {"error": "형식이 올바르지 않습니다. YYMMDD-N 형식의 유효한 가상 코드를 입력해 주세요. 예: 980320-2", "field": "virtual_code"})
+            return
+        if not isinstance(exam_ref, str) or not exam_ref.strip():
+            self._send_json(400, {"error": "시험명을 선택하거나 입력해 주세요.", "field": "exam"})
+            return
+        with self.server.kiosk_lock:
+            if session.get("mode") != "self_demo" or session["state"] != "awaiting_self_auth":
+                self._send_json(409, {"error": "추가 DEMO 정보를 입력할 수 있는 상태가 아닙니다."})
+                return
+            attempts = int(session.get("demo_info_attempts", 0))
+            if attempts >= DEMO_INFO_MAX_ATTEMPTS:
+                self._send_json(429, {"error": "입력 시도 횟수를 초과했습니다. 감독관 확인을 요청해 주세요."})
+                return
+            profile = DEMO_CANDIDATE_PROFILES.get((session["exam_id"], session["candidate_id"]))
+            exam_key = next(
+                (key for key, name in DEMO_EXAMS.items() if exam_ref.strip() in (key, name)),
+                None,
+            )
+            matched = bool(
+                profile
+                and exam_key
+                and hmac.compare_digest(code.strip().encode(), profile["virtual_code"].encode())
+                and exam_key == profile["exam_id"]
+            )
+            session["demo_info_attempts"] = attempts + 1
+            session["demo_info_verified"] = matched
+            with connect_db() as connection:
+                write_event(
+                    connection,
+                    "키오스크 DEMO 추가 정보 확인",
+                    "accepted" if matched else "rejected",
+                    exam_id=session["exam_id"],
+                    candidate_id=session["candidate_id"],
+                    actor="kiosk",
+                    details="authentication_path=self_demo; virtual DEMO info check only; not identity verification; input values not recorded",
+                )
+        if not matched:
+            self._send_json(
+                403,
+                {
+                    "error": "입력한 DEMO 정보가 사전 설정과 일치하지 않습니다. 다시 입력하거나 감독관 확인을 요청해 주세요.",
+                    "attempts_left": max(0, DEMO_INFO_MAX_ATTEMPTS - attempts - 1),
+                    "demo_only": True,
+                    "real_authentication": False,
+                },
+            )
+            return
+        self._send_json(
+            200,
+            {
+                "state": "demo_info_matched",
+                "demo_only": True,
+                "real_authentication": False,
+                "message": "DEMO 정보가 사전 설정과 일치합니다. 이는 본인 인증이 아니며 DEMO 시뮬레이션 QR 발급만 가능합니다.",
+            },
+        )
+
     def _kiosk_demo_auto_issue(self) -> None:
         """Preset DEMO simulation: needs a server-verified proctor role, ignores any face result."""
         try:
@@ -1652,14 +1763,25 @@ class RequestHandler(BaseHTTPRequestHandler):
         if KIOSK_BROWSER_ASSERTION_FIELDS.intersection(payload):
             self._send_json(400, {"error": "자동 발급 시연은 얼굴 분석 결과를 받지 않습니다.", "demo_only": True, "real_authentication": False})
             return
-        if payload.get("demo_simulation") is not True or payload.get("scenario") != "preset_auto_issue":
+        scenario = payload.get("scenario")
+        if payload.get("demo_simulation") is not True or scenario not in ("preset_auto_issue", "demo_info_simulation"):
             self._send_json(400, {"error": "자동 발급 시연 시나리오를 명시해야 합니다."})
             return
         session = self._kiosk_session(payload.get("kiosk_session_id"))
         if not session:
             self._send_json(410, {"error": "키오스크 세션이 만료되었습니다."})
             return
-        if not self._require_role("proctor"):
+        issue_actor = "proctor"
+        if scenario == "demo_info_simulation":
+            # Server-side gates: DEMO simulation permission + server-matched virtual DEMO info.
+            if not DEMO_SIMULATION_ENABLED:
+                self._send_json(403, {"error": "DEMO 시뮬레이션 권한이 서버에서 허용되지 않았습니다.", "demo_only": True})
+                return
+            if session.get("demo_info_verified") is not True:
+                self._send_json(403, {"error": "서버가 확인한 DEMO 추가 정보 일치가 없어 QR을 발급할 수 없습니다.", "demo_only": True})
+                return
+            issue_actor = "kiosk"
+        elif not self._require_role("proctor"):
             return
         with self.server.kiosk_lock:
             if session.get("mode") != "self_demo" or session["state"] != "awaiting_self_auth":
@@ -1681,7 +1803,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 ).fetchone():
                     session["state"] = "duplicate"
                     write_event(connection, "키오스크 자동 발급 시연 차단", "blocked", exam_id=exam_id,
-                                candidate_id=candidate_id, actor="proctor", details="DEMO simulation; duplicate admission")
+                                candidate_id=candidate_id, actor=issue_actor, details="DEMO simulation; duplicate admission")
                     self._send_json(409, {"error": "이미 입실 처리된 응시자입니다."})
                     return
                 demo_token = f"DEMO-ONLY:SELF:{secrets.token_urlsafe(32)}"
@@ -1713,8 +1835,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "accepted",
                     exam_id=exam_id,
                     candidate_id=candidate_id,
-                    actor="proctor",
-                    details=f"authentication_path=self_demo; preset simulation independent of face analysis; DEMO-only one-time QR {TOKEN_TTL_SECONDS}s; not real authentication",
+                    actor=issue_actor,
+                    details=f"authentication_path=self_demo; preset simulation ({scenario}) independent of face analysis; DEMO-only one-time QR {TOKEN_TTL_SECONDS}s; not real authentication",
                 )
         self._send_json(
             200,

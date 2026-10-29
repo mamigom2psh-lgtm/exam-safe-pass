@@ -83,6 +83,34 @@ class KioskBrowserFlowTests(unittest.TestCase):
             self.assertEqual(self.db_count("tokens"), 0)
             browser.close()
 
+    def test_score_gate_then_demo_info_then_simulation_qr(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = self.open_result_screen(browser)
+            for score, expected in ((0.499, False), (0.5, True), (0.66, True)):
+                page.evaluate("s => applyDemoScreenGate({status:'reference_only', score:s})", score)
+                self.assertEqual(page.is_visible("#goDemoInfo"), expected, score)
+                self.assertEqual(page.is_visible("#demoInfoGateBelow"), not expected, score)
+            for bad in ("{status:'reference_only'}", "{status:'reference_only', score:NaN}", "{status:'face_missing', score:0.9}"):
+                page.evaluate(f"applyDemoScreenGate({bad})")
+                self.assertFalse(page.is_visible("#goDemoInfo"), bad)
+            page.evaluate("applyDemoScreenGate({status:'reference_only', score:0.58})")
+            page.click("#goDemoInfo")
+            page.wait_for_function("currentScreenId === 'demoInfoScreen'")
+            self.assertIn("컴퓨터활용능력 2급", page.inner_text("#demoExam"))
+            for code, fragment in (("", "입력해"), ("98032", "형식"), ("990101-1", "일치하지 않습니다")):
+                page.fill("#virtualCode", code)
+                page.click("#demoInfoSubmit")
+                page.wait_for_function("f => document.getElementById('demoInfoStatus').textContent.includes(f)", arg=fragment)
+                self.assertEqual(page.evaluate("currentScreenId"), "demoInfoScreen")
+            self.assertEqual(self.db_count("demo_tokens"), 0)
+            page.fill("#virtualCode", "980320-2")
+            page.click("#demoInfoSubmit")
+            self.assert_demo_qr_shown(page, simulation=True)
+            self.assertIn("공식 신분 인증 아님", page.inner_text("#qrLabel"))
+            self.assertEqual(self.db_count("tokens"), 0)
+            browser.close()
+
     def test_rejected_review_never_shows_qr(self):
         with sync_playwright() as pw:
             browser = pw.chromium.launch()

@@ -353,6 +353,7 @@ class ServerScenarios(unittest.TestCase):
                 "EXAM_SAFE_KIOSK_PRINT_QR_TTL_SECONDS": "900",
             }
         )
+        env.update(getattr(cls, "extra_env", {}))
         cls.process = subprocess.Popen(
             [sys.executable, str(ROOT / "server.py")],
             cwd=ROOT,
@@ -461,7 +462,7 @@ class ServerScenarios(unittest.TestCase):
         status, candidate = self.api.lookup_kiosk_candidate(created["kiosk_session_id"])
         self.assertEqual(status, 200, candidate)
         self.assertEqual(candidate["candidate_number"], "2026-0012")
-        self.assertEqual(candidate["registered_photo_url"], "/images/candidate.jpg")
+        self.assertEqual(candidate["registered_photo_url"], "/images/2026-0012-registration.jpg")
         self.assertEqual(candidate["status"], "awaiting_proctor")
         self.assertNotIn("authenticated", candidate)
         status, missing = self.api.lookup_kiosk_candidate(
@@ -510,7 +511,7 @@ class ServerScenarios(unittest.TestCase):
 
         token = decode_qr_png(kiosk_status["qr_png"])
         self.assertTrue(token)
-        self.assertNotIn("김안심", token)
+        self.assertNotIn("박세현", token)
         self.assertNotIn("2026-0012", token)
         self.assertNotIn(CAN_1, token)
 
@@ -627,7 +628,7 @@ class ServerScenarios(unittest.TestCase):
         token = decode_qr_png(qr["qr_png"])
         self.assertTrue(token.startswith("DEMO-ONLY:SELF:"))
         self.assertNotIn("2026-0012", token)
-        self.assertNotIn("김안심", token)
+        self.assertNotIn("박세현", token)
         self.assertEqual(qr["demo_token"], token)
         with closing(sqlite3.connect(self.db_path)) as connection, connection:
             demo_token = connection.execute(
@@ -943,11 +944,11 @@ class ServerScenarios(unittest.TestCase):
         self.assertTrue(ticket["demo_only"])
         self.assertEqual(ticket["delivery"], "print")
         self.assertEqual(ticket["expires_in"], 900)
-        self.assertEqual(ticket["candidate_name"], "김안심")
+        self.assertEqual(ticket["candidate_name"], "박세현")
         self.assertEqual(ticket["candidate_number"], "2026-0012")
         token = decode_qr_png(ticket["qr_png"])
         self.assertTrue(token.startswith("DEMO-ONLY:SELF:"))
-        self.assertNotIn("김안심", token)
+        self.assertNotIn("박세현", token)
         self.assertNotIn("2026-0012", token)
 
         status, current = self.api.kiosk_status(session_id)
@@ -1061,7 +1062,7 @@ class ServerScenarios(unittest.TestCase):
             "GET", "/api/kiosk/requests", role="proctor", key=PROCTOR_KEY
         )
         self.assertEqual(status, 200)
-        self.assertEqual(requests["requests"][0]["photo_url"], "/images/candidate.jpg")
+        self.assertEqual(requests["requests"][0]["photo_url"], "/images/2026-0012-registration.jpg")
         status, _ = self.api.kiosk_review(session_id, role="supervisor", key=SUPERVISOR_KEY)
         self.assertEqual(status, 403)
         status, response = self.api.kiosk_review(session_id)
@@ -1129,7 +1130,7 @@ class ServerScenarios(unittest.TestCase):
         self.assertTrue(qr["demo_only"])
         qr_bytes = base64.b64decode(qr["qr_png"], validate=True)
         self.assertNotIn(b"2026-0012", qr_bytes)
-        self.assertNotIn("김안심".encode("utf-8"), qr_bytes)
+        self.assertNotIn("박세현".encode("utf-8"), qr_bytes)
         with closing(sqlite3.connect(self.db_path)) as connection, connection:
             previous = connection.execute(
                 "SELECT used_at FROM demo_tokens WHERE token_hash = ?", (previous_hash,)

@@ -328,3 +328,16 @@ test('alignment effect reports median baseline and aligned distances', () => {
 	assert.equal(out.medianAligned, 2500);
 	assert.equal(out.conclusion, 'descriptive_only');
 });
+
+test('demoScreenGate opens only for finite reference scores >= 50.0% and is never an identity verdict', () => {
+	const gate = (score, status = 'reference_only') => sim.demoScreenGate({ status, score });
+	assert.equal(gate(0.499).open, false);
+	assert.equal(gate(0.5).open, true);
+	assert.equal(gate(0.5).percent, 50);
+	assert.equal(gate(0.66).open, true);
+	for (const bad of [undefined, null, NaN, Infinity, -0.1, 1.2, '0.9']) assert.equal(gate(bad).open, false, String(bad));
+	for (const status of ['face_missing', 'multiple_faces', 'comparison_failed', 'embedding_unavailable']) assert.equal(gate(0.9, status).open, false, status);
+	assert.equal(sim.demoScreenGate(undefined).open, false);
+	assert.equal(Object.hasOwn(gate(0.9), 'verified'), false);
+	assert.equal(sim.browserVerificationState({ status: 'reference_only', score: 0.9 }, { status: 'live_candidate', score: 0.9 }).state, 'inconclusive');
+});

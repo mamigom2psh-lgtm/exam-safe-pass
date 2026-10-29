@@ -323,7 +323,19 @@
 		return { types, anyWorsened: Object.values(types).some((t) => t.worsened), reportable: a.reportable && b.reportable };
 	}
 
-	const api = { cropRegion, CROP_STRATEGIES, summarizeHairScenarios, comparePadAcceptance, evaluate, browserVerificationState, evaluatePadEvidence, assessThresholdReadiness, computeErrorRates, summarizeAlignmentEffect, evaluatePadSamples, explainHumanDistance, summarizeScoreDistribution, inspectFace, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage };
+	// Contest-demo SCREEN-TRANSITION gate only (reference similarity >= 50.0%). It is not an identity
+	// threshold, never produces verified, and the server never receives or trusts this value.
+	const DEMO_SCREEN_GATE_PERCENT = 50;
+	function demoScreenGate(comparison) {
+		const score = comparison && comparison.status === 'reference_only' ? comparison.score : NaN;
+		if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 1) {
+			return { open: false, percent: null, reason: 'score_unavailable' };
+		}
+		const percent = Math.round(score * 1000) / 10;
+		return { open: percent >= DEMO_SCREEN_GATE_PERCENT, percent, reason: percent >= DEMO_SCREEN_GATE_PERCENT ? 'reference_at_or_above_demo_gate' : 'below_demo_gate' };
+	}
+
+	const api = { demoScreenGate, DEMO_SCREEN_GATE_PERCENT, cropRegion, CROP_STRATEGIES, summarizeHairScenarios, comparePadAcceptance, evaluate, browserVerificationState, evaluatePadEvidence, assessThresholdReadiness, computeErrorRates, summarizeAlignmentEffect, evaluatePadSamples, explainHumanDistance, summarizeScoreDistribution, inspectFace, evaluateLiveness, summarizeLivenessFrames, cameraErrorMessage };
 	root.ExamFaceSimilarity = api;
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(globalThis);

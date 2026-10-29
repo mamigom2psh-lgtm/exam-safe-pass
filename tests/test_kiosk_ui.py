@@ -64,6 +64,18 @@ class KioskUiGuardTests(unittest.TestCase):
         review = self.page[self.page.index("$('inlineProctorForm').onsubmit"):self.page.index("async function runAutoIssue")]
         self.assertNotRegex(review, r"(?:face_score|face_similarity|capturedFaceResult|liveness|similarity|antispoof)")
 
+    def test_demo_info_step_is_a_screen_gate_not_verification(self):
+        for needle in ('id="demoInfoScreen"', 'id="demoInfoForm"', 'id="goDemoInfo"', 'id="virtualCode"', "demoScreenGate", "verify-demo-info", "demo_info_simulation", "YYMMDD-N", "실제 주민등록번호"):
+            self.assertIn(needle, self.page)
+        self.assertNotIn("본인이 아닙니다", self.page)
+        flow = self.page[self.page.index("$('demoInfoForm').onsubmit"):self.page.index("function showSimStatus")]
+        self.assertNotRegex(flow, r"(?:capturedFaceResult|similarity|antispoof|face_score|liveness)")
+        self.assertNotIn("verified", flow)
+        # the gate runs after the analysis and also on failure (closed)
+        self.assertIn("applyDemoScreenGate(comparison)", self.page)
+        self.assertIn("applyDemoScreenGate({status:'comparison_failed'})", self.page)
+        self.assertIn("DEMO 시뮬레이션 · 공식 신분 인증 아님", self.page)
+
     def test_analysis_has_timeout_so_loading_cannot_hang(self):
         self.assertIn("ANALYSIS_TIMEOUT_MS", self.page)
         self.assertIn("분석 시간 초과", self.page)

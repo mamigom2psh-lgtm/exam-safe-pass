@@ -41,7 +41,7 @@ class ExistingPrototypeRegressionTests(unittest.TestCase):
     def test_photo_scenarios_and_images_remain(self):
         for scenario in ("normal", "impostor", "alternate"):
             self.assertIn(f'value="{scenario}"', self.page)
-        for image in ("candidate.jpg", "candidate2.png", "impostor.png"):
+        for image in ("2026-0012-registration.jpg", "candidate2.png", "impostor.png"):
             with self.subTest(image=image):
                 self.assertTrue((ROOT / "images" / image).is_file())
                 self.assertIn(image, self.page)

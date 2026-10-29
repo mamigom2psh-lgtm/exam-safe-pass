@@ -182,6 +182,11 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 </table>
 </details>
 <p class="small">얼굴 유사도와 모델 점수는 브라우저에서만 처리되며 서버에 전송·저장되지 않습니다. 서버는 실제 본인 여부나 실재성을 검증하지 않습니다. 출력은 별도 DEMO 모의 절차와 분리된 PoC 결과이며 실제 입실 기록 또는 운영 QR 발급 근거가 아닙니다.</p>
+<div class="next-step" id="demoInfoGatePanel" hidden>
+<p class="lead"><strong>DEMO 화면 전환 기준 충족 · 추가 정보 입력</strong><br>참고 유사도 <span id="gatePercent"></span>%가 공모전 시연용 화면 전환 기준(50.0%) 이상입니다. 이 기준은 본인 인증 기준이 아니며 인증 상태는 계속 inconclusive입니다. 점수는 서버로 전송되지 않습니다.</p>
+<div class="row"><button id="goDemoInfo" type="button">추가 정보 입력</button></div>
+</div>
+<div class="status warn" id="demoInfoGateBelow" hidden>참고 유사도가 시연용 화면 전환 기준(50.0%) 미만이거나 점수가 없습니다. 다시 촬영하거나 감독관 확인을 요청해 주세요. (타인이라는 판정이 아닙니다.)</div>
 <div class="next-step" id="supervisorPanel">
 <p class="lead"><strong>다음 단계 · 감독관 확인</strong><br>얼굴 분석 결과는 참고용이며 판정 불가입니다. 감독관이 신분증과 얼굴을 직접 대조해 서버에서 승인하면 DEMO QR이 발급됩니다.</p>
 <div class="row"><button id="faceHelp" type="button">감독관 확인 요청 (QR 발급 단계로)</button><button id="retryFaceCapture" class="secondary" type="button">다시 촬영</button></div>
@@ -211,6 +216,20 @@ body.high-contrast input,body.high-contrast select{background:#000;color:#fff;bo
 <div class="status" id="ticketChoiceStatus" aria-live="polite" aria-atomic="true"></div>
 </section>
 
+<section class="screen" id="demoInfoScreen" aria-labelledby="demoInfoTitle">
+<p class="step-count">추가 정보 · DEMO</p>
+<h2 id="demoInfoTitle" tabindex="-1">추가 정보 입력 (가상 DEMO 데이터)</h2>
+<p class="lead"><strong>공식 신분 인증이 아닙니다.</strong> 아래 값은 <u>가상 DEMO 생년월일·구분 코드</u>입니다. 실제 주민등록번호나 그 일부를 입력하지 마세요. 서버의 사전 설정 DEMO 데이터와 대조만 하며 입력값은 저장·기록되지 않습니다.</p>
+<form id="demoInfoForm" novalidate>
+<label for="virtualCode">가상 DEMO 생년월일·구분 코드 (YYMMDD-N)</label>
+<input id="virtualCode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="예: 980320-2 (가상 예시)" aria-describedby="demoInfoStatus">
+<label for="demoExam">시험명 (DEMO 시험 목록)</label>
+<select id="demoExam"></select>
+<div class="row"><button type="submit" id="demoInfoSubmit">DEMO 정보 확인 후 시뮬레이션 QR 발급</button><button type="button" class="secondary" id="demoInfoBack">결과 화면으로 돌아가기</button></div>
+</form>
+<div class="status" id="demoInfoStatus" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
+<p class="small">DEMO 시뮬레이션 · 공식 신분 인증 아님 · 실제 입실 불가. 일반 감독관 승인 경로는 별도로 유지됩니다.</p>
+</section>
 <section class="screen" id="proctorWaitScreen" aria-labelledby="proctorTitle">
 <h2 id="proctorTitle" tabindex="-1">감독관 확인 대기</h2>
 <p class="lead">화면을 유지하고 감독관에게 확인을 요청하세요. 서버에서 권한이 확인된 감독관만 신원확인을 완료할 수 있습니다.</p>
@@ -509,7 +528,7 @@ function showVerificationState(comparison,liveness){
 		'warn');
 }
 // Progress indicator only; it never reflects a verified identity (every step is a DEMO step).
-const FLOW_STEPS=[['numberScreen','수험번호 조회'],['selfCameraScreen','카메라 촬영'],['selfResultScreen','참고용 분석'],['proctorWaitScreen','감독관 확인'],['qrScreen','DEMO QR'],['demoEntryScreen','입실 시연']];
+const FLOW_STEPS=[['numberScreen','수험번호 조회'],['selfCameraScreen','카메라 촬영'],['selfResultScreen','참고용 분석'],['demoInfoScreen','DEMO 정보'],['proctorWaitScreen','감독관 확인'],['qrScreen','DEMO QR'],['demoEntryScreen','입실 시연']];
 function renderFlowSteps(id){
 	const list=$('flowSteps');
 	if(!list)return;
@@ -741,6 +760,7 @@ async function closeSession(){
 	$('candidateNumber').value='';
 	$('candidateInfo').textContent='';
 	$('simStatus').hidden=true;
+	resetDemoInfoUi();
 	$('simLoginForm').hidden=true;
 	$('inlineProctorStatus').hidden=true;
 	$('ipPass').value='';
@@ -825,7 +845,7 @@ function displayQr(result,isDemo){
 	$('qrNotice').hidden=true;
 	$('qrStatus').hidden=true;
 	$('qrStepCount').textContent=isDemo?'4단계':'';
-	$('qrLabel').textContent=isDemo?(result.simulation?'자동 발급 시연(DEMO · 사전 설정) · DEMO 전용 QR · 실제 입실 불가':'DEMO 전용 QR · 실제 입실 불가'):'감독관 승인 완료 · 모의 운영 QR';
+	$('qrLabel').textContent=isDemo?(result.simulation?'자동 발급 시연(DEMO · 사전 설정) · DEMO 시뮬레이션 · 공식 신분 인증 아님 · DEMO 전용 QR · 실제 입실 불가':'DEMO 전용 QR · 실제 입실 불가'):'감독관 승인 완료 · 모의 운영 QR';
 	$('qrGuidance').textContent=isDemo
 		?`공모전 시제품 · 실제 입실 불가. DEMO QR은 발급 후 ${result.expires_in}초간 1회만 유효합니다.${result.simulation?' 이 QR은 얼굴 인증과 무관한 사전 설정 시연입니다.':''}`
 		:'QR은 발급 후 30초간 유효합니다. 실제 기관의 입실 허가가 아닙니다.';
@@ -869,7 +889,7 @@ function updatePrintTicket(result,isDemo){
 		:'모의 서비스 · 실제 신원인증 아님';
 	$('ticketDemoFoot').textContent=$('ticketPrintArea').querySelector('.ticket-demo').textContent;
 	$('ticketPrintArea').querySelector('p').textContent=isDemo
-		?'이 QR은 모의 확인용이며 실제 입실 승인에 사용할 수 없습니다.'
+		?`${result.simulation?'DEMO 시뮬레이션 · 공식 신분 인증 아님 · ':''}이 QR은 모의 확인용이며 실제 입실 승인에 사용할 수 없습니다.`
 		:'시험장 입구에서 등록 사진과 현장 얼굴을 감독관이 대조해야 합니다.';
 }
 function startQrCountdown(expiresAt){
@@ -1140,6 +1160,7 @@ $('cameraContinue').onclick=async()=>{
 		capturedLivenessResult=liveness.status;
 		showLivenessResult(liveness);
 		showVerificationState(comparison,liveness);
+		applyDemoScreenGate(comparison);
 		if(comparison.status==='reference_only'){
 			updateAntiSpoofDiagnostics({reason:'검증된 동일인 판정 기준(임계값·표본)이 없어 판정 불가 · 감독관 확인 필요'});
 			setStatus('faceComparisonResult',`얼굴 비교 참고값 · ${(comparison.score*100).toFixed(1)}% (동일인일 확률이 아닙니다). 검증된 기준이 없어 본인/타인을 판정하지 않았습니다. 헤어스타일·조명·촬영 시점에 따라 수치가 달라질 수 있습니다.`,'warn');
@@ -1179,6 +1200,7 @@ $('cameraContinue').onclick=async()=>{
 		setStatus('faceComparisonResult','얼굴 비교 분석에 실패했습니다. 이는 타인이라는 판정이 아닙니다. 다시 촬영하거나 감독관 확인을 요청하세요.','warn');
 		showLivenessResult({status:'liveness_unavailable'});
 		showVerificationState({status:'comparison_failed'},{status:'liveness_unavailable'});
+		applyDemoScreenGate({status:'comparison_failed'});
 		$('completeSelfDemo').hidden=true;
 	}finally{
 		clearFaceResults(results);
@@ -1240,6 +1262,7 @@ $('retryFaceCapture').onclick=()=>{
 	setStatus('livenessResult','PAD 참고 검사 대기 중 · 실재성 인증으로 사용되지 않습니다.','warn');
 	setStatus('verificationStateResult','인증 상태: 분석 전','warn');
 	$('simStatus').hidden=true;
+	resetDemoInfoUi();
 	$('simLoginForm').hidden=true;
 	$('completeSelfDemo').hidden=true;
 	setStatus('cameraStatus','계속하려면 카메라를 켜 주세요.');
@@ -1259,6 +1282,56 @@ $('faceHelp').onclick=async()=>{
 		$('selfResultStatus').scrollIntoView({block:'center'});
 	}finally{
 		$('faceHelp').disabled=false;
+	}
+};
+function resetDemoInfoUi(){
+	$('demoInfoGatePanel').hidden=true;
+	$('demoInfoGateBelow').hidden=true;
+	$('demoInfoStatus').hidden=true;
+	$('virtualCode').value='';
+}
+function applyDemoScreenGate(comparison){
+	const gate=ExamFaceSimilarity.demoScreenGate(comparison);
+	$('demoInfoGatePanel').hidden=!gate.open;
+	$('demoInfoGateBelow').hidden=gate.open;
+	if(gate.open)$('gatePercent').textContent=gate.percent.toFixed(1);
+}
+$('goDemoInfo').onclick=()=>{
+	const select=$('demoExam');
+	select.textContent='';
+	for(const option of candidateRecord?.demo_exam_options||[]){
+		const item=document.createElement('option');
+		item.value=option.id;
+		item.textContent=option.name;
+		select.append(item);
+	}
+	$('demoInfoStatus').hidden=true;
+	showScreen('demoInfoScreen');
+	$('virtualCode').focus();
+};
+$('demoInfoBack').onclick=()=>showScreen('selfResultScreen');
+$('demoInfoForm').onsubmit=async event=>{
+	event.preventDefault();
+	const out=$('demoInfoStatus');
+	const show=(text,kind)=>{out.hidden=false;out.className=`status ${kind}`;out.textContent=text};
+	const code=$('virtualCode').value.trim();
+	if(!code){show('가상 DEMO 생년월일·구분 코드를 입력해 주세요. 예: 980320-2','bad');$('virtualCode').focus();return}
+	if(!/^\d{6}-[1-4]$/.test(code)){show('형식이 올바르지 않습니다. YYMMDD-N 형식의 가상 코드를 입력해 주세요. 예: 980320-2','bad');$('virtualCode').focus();return}
+	if(!$('demoExam').value){show('시험명을 선택해 주세요.','bad');return}
+	$('demoInfoSubmit').disabled=true;
+	try{
+		await api('/api/kiosk/self-demo/verify-demo-info',{kiosk_session_id:kioskSessionId,virtual_code:code,exam:$('demoExam').value});
+		const result=await api('/api/kiosk/demo-auto-issue',{kiosk_session_id:kioskSessionId,demo_simulation:true,scenario:'demo_info_simulation'});
+		if(result.demo_only!==true||result.simulation!==true)throw new Error('invalid simulation response');
+		$('virtualCode').value='';
+		selfDemoToken=result.demo_token;
+		clearInterval(statusTimer);
+		statusTimer=setInterval(pollStatus,1000);
+		displayQr(result,true);
+	}catch(error){
+		show(`${error.message||genericError()} QR은 발급되지 않았습니다. 다시 입력하거나 감독관 확인을 요청해 주세요.`,'bad');
+	}finally{
+		$('demoInfoSubmit').disabled=false;
 	}
 };
 function showSimStatus(text,kind){

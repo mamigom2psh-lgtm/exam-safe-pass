@@ -42,9 +42,9 @@
 <div class="info">
 <div class="tile"><span>시험명</span><strong>2026 모의 자격시험</strong></div>
 <div class="tile"><span>수험번호</span><strong>2026-0012</strong></div>
-<div class="tile"><span>응시자</span><strong>김안심 (가상)</strong></div>
+<div class="tile"><span>응시자</span><strong>박세현 (가상)</strong></div>
 </div>
-<div class="tile"><span>가상 증명사진</span><img class="portrait" src="images/candidate.jpg" alt="가상 응시자 김안심의 증명사진"><strong>김안심 · 가상 데이터</strong></div>
+<div class="tile"><span>가상 증명사진</span><img class="portrait" src="images/2026-0012-registration.jpg" alt="가상 응시자 박세현의 증명사진"><strong>박세현 · 가상 데이터</strong></div>
 <p class="small">시연용 mock provider가 가상 성공/실패 결과를 반환합니다. 모의 인증 성공 후에만 서버가 30초 유효한 일회용 토큰을 발급합니다. 감독관의 명부 확인과 수동 얼굴 대조가 모두 일치해야 입실할 수 있습니다.</p>
 <label for="candidateKey">시연 응시자 로그인 키</label><br>
 <input id="candidateKey" type="password" autocomplete="off" value="demo-candidate-key" placeholder="응시자 로그인 키">
@@ -76,7 +76,7 @@
 <p class="small"><strong>공모전 시제품 · 실제 모바일신분증 인증 아님 · 실제 신원인증 아님</strong></p>
 <h2>감독관 현장 확인</h2>
 <div class="info">
-<div class="tile"><span>응시자 명부</span><strong id="rosterName">김안심</strong></div>
+<div class="tile"><span>응시자 명부</span><strong id="rosterName">박세현</strong></div>
 <div class="tile"><span>수험번호</span><strong id="rosterNumber">2026-0012</strong></div>
 <div class="tile"><span>모의 신분인증</span><strong id="verifyState">미완료</strong></div>
 </div>
@@ -102,10 +102,10 @@
 </div>
 <div id="scannedCandidate" class="tile" hidden><span>서버 확인된 명부 정보</span><strong id="scannedCandidateDetails"></strong></div>
 <div class="photo-grid" aria-label="등록 사진과 현장 사진 비교">
-<figure class="photo-card"><figcaption>등록 사진 · 가상 명부</figcaption><img id="rosterPhoto" src="images/candidate.jpg" alt="응시자 명부에 등록된 가상 사진"></figure>
-<figure class="photo-card"><figcaption id="fieldPhotoLabel">현장 확인 대상 사진 · 정상 응시</figcaption><img id="fieldPhoto" src="images/candidate.jpg" alt="정상 응시 시나리오의 현장 확인 대상 사진"></figure>
+<figure class="photo-card"><figcaption>등록 사진 · 가상 명부</figcaption><img id="rosterPhoto" src="images/2026-0012-registration.jpg" alt="응시자 명부에 등록된 가상 사진"></figure>
+<figure class="photo-card"><figcaption id="fieldPhotoLabel">현장 확인 대상 사진 · 정상 응시</figcaption><img id="fieldPhoto" src="images/2026-0012-registration.jpg" alt="정상 응시 시나리오의 현장 확인 대상 사진"></figure>
 </div>
-<div class="scenario-control"><label for="photoScenario">응시 시나리오</label><select id="photoScenario"><option value="normal">정상 응시 · candidate.jpg</option><option value="impostor">대리응시 · impostor.png</option><option value="alternate">다른 가상 인물 · candidate2.png</option></select></div>
+<div class="scenario-control"><label for="photoScenario">응시 시나리오</label><select id="photoScenario"><option value="normal">정상 응시 · 2026-0012-registration.jpg</option><option value="impostor">대리응시 · impostor.png</option><option value="alternate">다른 가상 인물 · candidate2.png</option></select></div>
 <p class="small">실제 얼굴 대조는 수행되지 않습니다. 감독관이 사진과 현장 상황을 확인한 뒤 직접 판정합니다.</p>
 <label><input id="rosterMatch" type="checkbox"> 명부의 시험·응시자 정보가 일치함을 확인했습니다.</label><br><br>
 <label for="face">현장 얼굴 대조 결과</label> <select id="face">
@@ -254,9 +254,9 @@ function clearInspectedToken(){
 	verifiedToken='';
 	selectedCandidateId=CANDIDATE_ID;
 	$('scannedCandidate').hidden=true;
-	$('rosterName').textContent='김안심';
+	$('rosterName').textContent='박세현';
 	$('rosterNumber').textContent='2026-0012';
-	$('rosterPhoto').src='images/candidate.jpg';
+	$('rosterPhoto').src='images/2026-0012-registration.jpg';
 	$('rosterPhoto').alt='응시자 명부에 등록된 가상 사진';
 	$('rosterMatch').checked=false;
 	$('face').value='none';
@@ -293,7 +293,7 @@ async function inspectToken(token){
 	selectedCandidateId=result.candidate_id;
 	$('rosterName').textContent=result.candidate_name;
 	$('rosterNumber').textContent=result.candidate_number;
-	$('rosterPhoto').src=result.candidate_id==='candidate-002'?'images/candidate2.png':'images/candidate.jpg';
+	$('rosterPhoto').src=result.candidate_id==='candidate-002'?'images/candidate2.png':'images/2026-0012-registration.jpg';
 	$('rosterPhoto').alt=`${result.candidate_name}의 가상 명부 등록 사진`;
 	if($('photoScenario').value==='normal'){
 		$('fieldPhoto').src=$('rosterPhoto').src;
@@ -734,7 +734,7 @@ $('reset').onclick=async()=>{
 		['exceptionApplication','exceptionPhoto','exceptionWitnesses','exceptionSupervisor'].forEach(id=>$(id).checked=false);
 		status('physicalStatus','확인 결과 미제출 · 자동 승인되지 않습니다.');
 		status('exceptionStatus','책임자 인증 후 확인할 수 있습니다.');
-		$('fieldPhoto').src='images/candidate.jpg';$('fieldPhoto').alt='정상 응시 시나리오의 현장 확인 대상 사진';$('fieldPhotoLabel').textContent='현장 확인 대상 사진 · 정상 응시';
+		$('fieldPhoto').src='images/2026-0012-registration.jpg';$('fieldPhoto').alt='정상 응시 시나리오의 현장 확인 대상 사진';$('fieldPhotoLabel').textContent='현장 확인 대상 사진 · 정상 응시';
 		status('candidateStatus','시연 상태 초기화 완료 · 서버 감사 기록은 보존됩니다.','good');status('proctorStatus','현장 확인 대기 중');renderVerifyState();
 	}catch(error){status('candidateStatus',error.message,'bad')}
 };
